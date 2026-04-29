@@ -30,6 +30,14 @@ afterEach(async () => {
   await Instance.disposeAll()
 })
 
+function auth(): Record<string, string> {
+  const password = process.env.OPENCODE_SERVER_PASSWORD
+  if (!password) return {}
+  const username = process.env.OPENCODE_SERVER_USERNAME ?? "opencode"
+  const value = Buffer.from(`${username}:${password}`).toString("base64")
+  return { Authorization: `Basic ${value}` }
+}
+
 describe("session.list", () => {
   test("does not filter by directory when directory is omitted", async () => {
     Flag.OPENCODE_EXPERIMENTAL_WORKSPACES = false

@@ -162,7 +162,7 @@ export const ImportCommand = cmd({
         ...exportData.info,
         projectID: Instance.project.id,
       }) as Session.Info
-      const row = Session.toRow(info)
+      const row = Session.toRow(info) as typeof SessionTable.$inferInsert
       Database.use((db) =>
         db
           .insert(SessionTable)

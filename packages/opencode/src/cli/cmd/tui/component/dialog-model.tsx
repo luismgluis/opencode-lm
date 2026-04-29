@@ -154,6 +154,7 @@ export function DialogModel(props: { providerID?: string }) {
         {
           keybind: keybind.all.model_provider_list?.[0],
           title: connected() ? "Connect provider" : "View all providers",
+          requiresSelection: false,
           onTrigger() {
             dialog.replace(() => <DialogProvider />)
           },
@@ -163,6 +164,7 @@ export function DialogModel(props: { providerID?: string }) {
           title: "Favorite",
           disabled: !connected(),
           onTrigger: (option) => {
+            if (!option) return
             local.model.toggleFavorite(option.value as { providerID: string; modelID: string })
           },
         },

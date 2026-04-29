@@ -420,6 +420,12 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       disabled: !params.id || visibleUserMessages().length === 0,
       onSelect: fork,
     }),
+    sessionCommand({
+      id: "automations.open",
+      title: language.t("command.automations.open"),
+      description: language.t("command.automations.open.description"),
+      onSelect: () => navigate("/automations"),
+    }),
   ]
 
   const fileCmds = () => [

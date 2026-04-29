@@ -162,13 +162,15 @@ export function DialogSessionList() {
         const isDeleting = toDelete() === x.id
         const status = sync.data.session_status?.[x.id]
         const isWorking = status?.type === "busy"
+        const automation = x.automation ? <text fg={theme.info}>A</text> : undefined
+        const gutter = isWorking ? <Spinner /> : automation
         return {
           title: isDeleting ? `Press ${keybind.print("session_delete")} again to confirm` : x.title,
           bg: isDeleting ? theme.error : undefined,
           value: x.id,
           category,
           footer,
-          gutter: isWorking ? <Spinner /> : undefined,
+          gutter,
         }
       })
   })
@@ -199,6 +201,7 @@ export function DialogSessionList() {
           keybind: keybind.all.session_delete?.[0],
           title: "delete",
           onTrigger: async (option) => {
+            if (!option) return
             if (toDelete() === option.value) {
               const session = sessions().find((item) => item.id === option.value)
               const status = session?.workspaceID ? project.workspace.status(session.workspaceID) : undefined
@@ -247,6 +250,7 @@ export function DialogSessionList() {
           keybind: keybind.all.session_rename?.[0],
           title: "rename",
           onTrigger: async (option) => {
+            if (!option) return
             dialog.replace(() => <DialogSessionRename session={option.value} />)
           },
         },

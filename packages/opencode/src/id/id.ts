@@ -13,6 +13,8 @@ const prefixes = {
   tool: "tool",
   workspace: "wrk",
   entry: "ent",
+  automation: "aut",
+  automation_run: "atr",
 } as const
 
 export function schema(prefix: keyof typeof prefixes) {

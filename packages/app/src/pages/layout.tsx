@@ -1061,6 +1061,12 @@ export default function Layout(props: ParentProps) {
         onSelect: () => openSettings(),
       },
       {
+        id: "automations.open",
+        title: language.t("command.automations.open"),
+        category: language.t("command.category.settings"),
+        onSelect: () => openAutomations(),
+      },
+      {
         id: "session.previous",
         title: language.t("command.session.previous"),
         category: language.t("command.category.session"),
@@ -1218,6 +1224,11 @@ export default function Layout(props: ParentProps) {
       if (dialogDead || dialogRun !== run) return
       dialog.show(() => <x.DialogSettings />)
     })
+  }
+
+  function openAutomations() {
+    navigate("/automations")
+    layout.mobileSidebar.hide()
   }
 
   function projectRoot(directory: string) {
@@ -2346,6 +2357,9 @@ export default function Layout(props: ParentProps) {
       openProjectKeybind={() => command.keybind("project.open")}
       onOpenProject={chooseProject}
       renderProjectOverlay={projectOverlay}
+      automationsLabel={() => language.t("sidebar.automations")}
+      automationsKeybind={() => command.keybind("automations.open")}
+      onOpenAutomations={openAutomations}
       settingsLabel={() => language.t("sidebar.settings")}
       settingsKeybind={() => command.keybind("settings.open")}
       onOpenSettings={openSettings}

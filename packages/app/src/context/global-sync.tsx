@@ -1,4 +1,5 @@
 import type {
+  Automation,
   Config,
   OpencodeClient,
   Path,
@@ -42,6 +43,7 @@ type GlobalStore = {
   session_todo: {
     [sessionID: string]: Todo[]
   }
+  automation: Automation[]
   provider: ProviderListResponse
   provider_auth: ProviderAuthResponse
   config: Config
@@ -84,6 +86,7 @@ function createGlobalSync() {
     },
     project: [],
     session_todo: {},
+    automation: [],
     provider_auth: {},
     get path() {
       const EMPTY = { state: "", config: "", worktree: "", directory: "", home: "" }
@@ -318,12 +321,21 @@ function createGlobalSync() {
   const unsub = globalSDK.event.listen((e) => {
     const directory = e.name
     const event = e.details
+    if (!event) return
     const recent = bootingRoot || Date.now() - bootedAt < 1500
 
     if (directory === "global") {
       applyGlobalEvent({
         event,
         project: globalStore.project,
+        automations: globalStore.automation,
+        setAutomations(next) {
+          if (typeof next === "function") {
+            setGlobalStore("automation", produce(next))
+            return
+          }
+          setGlobalStore("automation", next)
+        },
         refresh: () => {
           if (recent) return
           bootstrap.refetch()

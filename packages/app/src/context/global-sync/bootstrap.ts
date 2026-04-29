@@ -1,4 +1,5 @@
 import type {
+  Automation,
   Config,
   OpencodeClient,
   Path,
@@ -28,6 +29,7 @@ type GlobalStore = {
   session_todo: {
     [sessionID: string]: Todo[]
   }
+  automation: Automation[]
   provider: ProviderListResponse
   provider_auth: ProviderAuthResponse
   config: Config

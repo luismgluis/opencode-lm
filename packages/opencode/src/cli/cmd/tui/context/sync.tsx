@@ -17,6 +17,8 @@ import type {
   ProviderListResponse,
   ProviderAuthMethod,
   VcsInfo,
+  Automation,
+  Path,
 } from "@opencode-ai/sdk/v2"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useProject } from "@tui/context/project"
@@ -77,6 +79,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       }
       formatter: FormatterStatus[]
       vcs: VcsInfo | undefined
+      path: Path
+      automation: Automation[]
     }>({
       provider_next: {
         all: [],
@@ -104,6 +108,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       mcp_resource: {},
       formatter: [],
       vcs: undefined,
+      path: { home: "", state: "", config: "", worktree: "", directory: "" },
+      automation: [],
     })
 
     const event = useEvent()
@@ -366,6 +372,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("vcs", { branch: event.properties.branch })
           break
         }
+        case "automation.created":
+        case "automation.updated": {
+          const result = Binary.search(store.automation, event.properties.id, (s) => s.id)
+          if (result.found) {
+            setStore("automation", result.index, reconcile(event.properties))
+            break
+          }
+
+          setStore(
+            "automation",
+            produce((draft) => {
+              draft.splice(result.index, 0, event.properties)
+            }),
+          )
+          break
+        }
+        case "automation.deleted": {
+          const result = Binary.search(store.automation, event.properties.id, (s) => s.id)
+          if (!result.found) break
+
+          setStore(
+            "automation",
+            produce((draft) => {
+              draft.splice(result.index, 1)
+            }),
+          )
+          break
+        }
       }
     })
 
@@ -451,8 +485,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             sdk.client.session.status({ workspace }).then((x) => {
               setStore("session_status", reconcile(x.data ?? {}))
             }),
+            sdk.client.automation.list().then((x) => {
+              const list = (x.data ?? []).toSorted((a, b) => a.id.localeCompare(b.id))
+              setStore("automation", reconcile(list))
+            }),
             sdk.client.provider.auth({ workspace }).then((x) => setStore("provider_auth", reconcile(x.data ?? {}))),
             sdk.client.vcs.get({ workspace }).then((x) => setStore("vcs", reconcile(x.data))),
+            sdk.client.path.get({ workspace }).then((x) => setStore("path", reconcile(x.data!))),
             project.workspace.sync(),
           ]).then(() => {
             setStore("status", "complete")

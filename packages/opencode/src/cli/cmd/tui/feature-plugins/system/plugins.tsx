@@ -215,6 +215,7 @@ function View(props: { api: TuiPluginApi }) {
           keybind: key,
           disabled: lock(),
           onTrigger: (item) => {
+            if (!item) return
             setCur(item.value)
             flip(item.value)
           },

@@ -69,6 +69,7 @@ export function fromRow(row: SessionRow): Info {
       : undefined
   const share = row.share_url ? { url: row.share_url } : undefined
   const revert = row.revert ?? undefined
+  const automation = row.automation ? { id: row.automation.id, name: row.automation.name ?? undefined } : undefined
   return {
     id: row.id,
     slug: row.slug,
@@ -83,6 +84,7 @@ export function fromRow(row: SessionRow): Info {
     share,
     revert,
     permission: row.permission ?? undefined,
+    automation,
     time: {
       created: row.time_created,
       updated: row.time_updated,
@@ -110,6 +112,7 @@ export function toRow(info: Info) {
     summary_diffs: info.summary?.diffs,
     revert: info.revert ?? null,
     permission: info.permission,
+    automation: info.automation ? { id: info.automation.id, name: info.automation.name ?? null } : null,
     time_created: info.time.created,
     time_updated: info.time.updated,
     time_compacting: info.time.compacting,
@@ -156,6 +159,11 @@ const Revert = Schema.Struct({
   diff: optionalOmitUndefined(Schema.String),
 })
 
+const AutomationInfo = Schema.Struct({
+  id: Schema.String,
+  name: Schema.optional(Schema.String),
+})
+
 export const Info = Schema.Struct({
   id: SessionID,
   slug: Schema.String,
@@ -171,9 +179,11 @@ export const Info = Schema.Struct({
   time: Time,
   permission: optionalOmitUndefined(Permission.Ruleset),
   revert: optionalOmitUndefined(Revert),
+  automation: optionalOmitUndefined(AutomationInfo),
 })
   .annotate({ identifier: "Session" })
   .pipe(withStatics((s) => ({ zod: zod(s) })))
+export type AutomationInfo = Types.DeepMutable<Schema.Schema.Type<typeof AutomationInfo>>
 export type Info = Types.DeepMutable<Schema.Schema.Type<typeof Info>>
 
 export const ProjectInfo = Schema.Struct({
@@ -199,6 +209,7 @@ export const CreateInput = Schema.optional(
     title: Schema.optional(Schema.String),
     permission: Schema.optional(Permission.Ruleset),
     workspaceID: Schema.optional(WorkspaceID),
+    automation: Schema.optional(AutomationInfo),
   }),
 ).pipe(withStatics((s) => ({ zod: zod(s) })))
 export type CreateInput = Types.DeepMutable<Schema.Schema.Type<typeof CreateInput>>
@@ -391,6 +402,7 @@ export interface Interface {
     title?: string
     permission?: Permission.Ruleset
     workspaceID?: WorkspaceID
+    automation?: Info["automation"]
   }) => Effect.Effect<Info>
   readonly fork: (input: { sessionID: SessionID; messageID?: MessageID }) => Effect.Effect<Info>
   readonly touch: (sessionID: SessionID) => Effect.Effect<void>
@@ -453,6 +465,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service> =
       directory: string
       path?: string
       permission?: Permission.Ruleset
+      automation?: Info["automation"]
     }) {
       const ctx = yield* InstanceState.context
       const result: Info = {
@@ -466,6 +479,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service> =
         parentID: input.parentID,
         title: input.title ?? createDefaultTitle(!!input.parentID),
         permission: input.permission,
+        automation: input.automation,
         time: {
           created: Date.now(),
           updated: Date.now(),
@@ -576,6 +590,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service> =
       title?: string
       permission?: Permission.Ruleset
       workspaceID?: WorkspaceID
+      automation?: Info["automation"]
     }) {
       const ctx = yield* InstanceState.context
       const workspace = yield* InstanceState.workspaceID
@@ -585,6 +600,7 @@ export const layer: Layer.Layer<Service, never, Bus.Service | Storage.Service> =
         path: sessionPath(ctx.worktree, ctx.directory),
         title: input?.title,
         permission: input?.permission,
+        automation: input?.automation,
         workspaceID: workspace,
       })
     })
