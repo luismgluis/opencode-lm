@@ -28,6 +28,7 @@ import * as Log from "@opencode-ai/core/util/log"
 import { LspTool } from "./lsp"
 import * as Truncate from "./truncate"
 import { ApplyPatchTool } from "./apply_patch"
+import { AutomationTool } from "./automation"
 import { Glob } from "@opencode-ai/core/util/glob"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -115,6 +116,7 @@ export const layer: Layer.Layer<
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
     const skilltool = yield* SkillTool
+    const automationtool = yield* AutomationTool
     const agent = yield* Agent.Service
 
     const state = yield* InstanceState.make<State>(
@@ -201,6 +203,7 @@ export const layer: Layer.Layer<
           code: Tool.init(codesearch),
           skill: Tool.init(skilltool),
           patch: Tool.init(patchtool),
+          automation: Tool.init(automationtool),
           question: Tool.init(question),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
@@ -223,6 +226,7 @@ export const layer: Layer.Layer<
             tool.search,
             tool.code,
             tool.skill,
+            tool.automation,
             tool.patch,
             ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [tool.lsp] : []),
             ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [tool.plan] : []),

@@ -47,6 +47,7 @@ export type Transaction = SQLiteTransaction<"sync", void>
 type Client = SQLiteBunDatabase
 
 type Journal = { sql: string; timestamp: number; name: string }[]
+type MigrationEntry = { sql: string; timestamp: number; name: string }
 
 function time(tag: string) {
   const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(tag)
@@ -81,6 +82,27 @@ function migrations(dir: string): Journal {
   return sql.sort((a, b) => a.timestamp - b.timestamp)
 }
 
+function sessionHasAutomationColumn(db: Client) {
+  try {
+    const columns = db.all<{ name?: string }>("PRAGMA table_info(`session`)")
+    return columns.some((column) => column.name === "automation")
+  } catch {
+    return false
+  }
+}
+
+function patchAlreadyAppliedAutomationMigration(db: Client, entries: MigrationEntry[]) {
+  if (!sessionHasAutomationColumn(db)) return entries
+
+  return entries.map((entry) => {
+    if (!entry.sql.includes("ALTER TABLE `session` ADD `automation` text")) return entry
+    return {
+      ...entry,
+      sql: "select 1;",
+    }
+  })
+}
+
 export const Client = lazy(() => {
   log.info("opening database", { path: Path })
 
@@ -108,7 +130,7 @@ export const Client = lazy(() => {
         item.sql = "select 1;"
       }
     }
-    migrate(db, entries)
+    migrate(db, patchAlreadyAppliedAutomationMigration(db, entries))
   }
 
   return db

@@ -426,6 +426,10 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       value: "automation.list",
       keybind: "automation_list",
       category: "Automation",
+      slash: {
+        name: "automations",
+        aliases: ["automation"],
+      },
       onSelect: () => {
         dialog.replace(() => <DialogAutomationList />)
       },

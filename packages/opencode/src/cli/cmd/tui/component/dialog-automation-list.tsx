@@ -1,4 +1,5 @@
 import { DialogSelect } from "@tui/ui/dialog-select"
+import type { DialogSelectOption } from "@tui/ui/dialog-select"
 import { DialogPrompt } from "@tui/ui/dialog-prompt"
 import { useDialog } from "@tui/ui/dialog"
 import { useSync } from "@tui/context/sync"
@@ -20,6 +21,12 @@ import type { Automation, Project } from "@opencode-ai/sdk/v2"
 import { DialogAutomationHistory } from "@tui/component/dialog-automation-history"
 
 const templateHint = "Template variables are available"
+type AutomationOptionValue =
+  | { kind: "create" }
+  | {
+      kind: "automation"
+      automation: Automation
+    }
 
 function projectLabel(project: Project) {
   return project.name || getFilename(project.worktree)
@@ -56,6 +63,8 @@ export function DialogAutomationList() {
   const keybind = useKeybind()
   const toast = useToast()
   const keys = keybind.all
+  const selectedAutomation = (option?: DialogSelectOption<AutomationOptionValue>) =>
+    option?.value.kind === "automation" ? option.value.automation : undefined
 
   const refreshAutomations = async () => {
     const list = await sdk.client.automation.list()
@@ -161,8 +170,14 @@ export function DialogAutomationList() {
     await refreshAutomations()
   }
 
-  const options = createMemo(() =>
-    sync.data.automation
+  const options = createMemo(() => [
+    {
+      title: "Create automation",
+      description: "Create a new automation",
+      category: "Actions",
+      value: { kind: "create" } satisfies AutomationOptionValue,
+    },
+    ...sync.data.automation
       .slice()
       .toSorted((a, b) => b.time.updated - a.time.updated)
       .map((automation) => {
@@ -175,10 +190,14 @@ export function DialogAutomationList() {
           title: automation.name || "Untitled",
           description: summary,
           footer,
-          value: automation,
+          category: "Automations",
+          value: {
+            kind: "automation",
+            automation,
+          } satisfies AutomationOptionValue,
         }
       }),
-  )
+  ])
 
   onMount(() => {
     dialog.setSize("large")
@@ -344,12 +363,16 @@ export function DialogAutomationList() {
   }
 
   return (
-    <DialogSelect
+    <DialogSelect<AutomationOptionValue>
       title="Automations"
       placeholder="Search automations..."
       options={options()}
       onSelect={(option) => {
-        editAutomation(option.value)
+        if (option.value.kind === "create") {
+          createAutomation()
+          return
+        }
+        editAutomation(option.value.automation)
       }}
       keybind={[
         {
@@ -364,8 +387,9 @@ export function DialogAutomationList() {
           keybind: keys.automation_run?.[0],
           title: "run",
           onTrigger: async (option) => {
-            if (!option) return
-            await sdk.client.automation.run({ automationID: option.value.id })
+            const automation = selectedAutomation(option)
+            if (!automation) return
+            await sdk.client.automation.run({ automationID: automation.id })
             await refreshAutomations()
           },
         },
@@ -373,8 +397,9 @@ export function DialogAutomationList() {
           keybind: keys.automation_open?.[0],
           title: "open",
           onTrigger: (option) => {
-            if (!option) return
-            const session = option.value.lastSession
+            const automation = selectedAutomation(option)
+            if (!automation) return
+            const session = automation.lastSession
             if (!session) return
             if (!canOpenSession(session.directory)) {
               toast.show({ message: "Open this session from its project", variant: "error" })
@@ -387,9 +412,10 @@ export function DialogAutomationList() {
           keybind: keys.automation_history?.[0],
           title: "history",
           onTrigger: (option) => {
-            if (!option) return
+            const automation = selectedAutomation(option)
+            if (!automation) return
             dialog.replace(
-              () => <DialogAutomationHistory automation={option.value} />,
+              () => <DialogAutomationHistory automation={automation} />,
               () => {
                 setTimeout(() => {
                   dialog.replace(() => <DialogAutomationList />)
@@ -402,8 +428,9 @@ export function DialogAutomationList() {
           keybind: keys.automation_export?.[0],
           title: "export",
           onTrigger: (option) => {
-            if (!option) return
-            exportSelected(option.value)
+            const automation = selectedAutomation(option)
+            if (!automation) return
+            exportSelected(automation)
           },
         },
         {
@@ -434,19 +461,21 @@ export function DialogAutomationList() {
           keybind: keys.automation_edit?.[0],
           title: "edit",
           onTrigger: (option) => {
-            if (!option) return
-            editAutomation(option.value)
+            const automation = selectedAutomation(option)
+            if (!automation) return
+            editAutomation(automation)
           },
         },
         {
           keybind: keys.automation_delete?.[0],
           title: "delete",
           onTrigger: async (option) => {
-            if (!option) return
+            const automation = selectedAutomation(option)
+            if (!automation) return
             const input = await confirmDelete()
             if (input === null) return
             if (input.trim() !== "DELETE") return
-            await sdk.client.automation.remove({ automationID: option.value.id })
+            await sdk.client.automation.remove({ automationID: automation.id })
             await refreshAutomations()
           },
         },

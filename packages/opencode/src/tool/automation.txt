@@ -1,0 +1,24 @@
+Create, list, get, update, delete, run, and view history of automations.
+Automations let you schedule prompt templates to run on a cron schedule across one or more project directories.
+
+Operations:
+- list: List all automations sorted by most recently updated
+- get: Get details of a specific automation by ID
+- create: Create a new automation with name, projects, prompt, optional schedule, and optional enabled flag
+- update: Update an existing automation's name, projects, prompt, schedule, or enabled status
+- remove: Delete an automation and its run history by ID
+- run: Manually trigger an automation to execute immediately
+- history: View recent run history for an automation (optionally with a limit parameter)
+- preview: Validate a cron schedule expression and get the next run time
+
+Usage notes:
+- The id parameter is required for get, update, remove, run, and history operations
+- For create, name, projects (array of directory paths), and prompt are required
+- schedule is a cron expression (e.g., "0 9 * * 1-5" for weekdays at 9am)
+- Projects should be absolute directory paths
+- schedule defaults to null (no scheduled execution) when omitted
+- enabled defaults to true when schedule is provided, false otherwise
+- For update, omit fields you don't want to change; pass schedule as null to clear it
+- Template variables supported in prompts: {{date}}, {{project.name}}, {{session.latest}}, {{session.query:term}}
+- The agent can also use /command syntax in the prompt (e.g., "/explain the codebase")
+- Automations can run across multiple projects when multiple directory paths are provided
