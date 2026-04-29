@@ -13,6 +13,8 @@
     "dev:storybook": "bun --cwd packages/storybook storybook",
     "lint": "oxlint",
     "typecheck": "bun turbo typecheck",
+    "build": "bun run --cwd packages/opencode build",
+    "build:lowprio": "bash script/build-lowprio.sh",
     "postinstall": "bun run --cwd packages/opencode fix-node-pty",
     "prepare": "husky",
     "random": "echo 'Random script'",
