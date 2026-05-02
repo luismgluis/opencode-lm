@@ -290,7 +290,7 @@ function adminPageHtml(username: string, role: string): string {
 </script>`)
 }
 
-export const LOGOUT_BAR_SCRIPT = `(function(){try{var x=new XMLHttpRequest();x.open('GET','/auth/session',false);x.withCredentials=true;x.send();if(x.status===200){var d=JSON.parse(x.responseText);if(d&&d.user){document.getElementById('ocUserName').textContent=d.user.username;document.getElementById('ocAuthBar').style.display='flex'}}}catch(e){}})();`
+
 
 export function AuthPagesRoutes(): Hono {
   const app = new Hono()
@@ -313,12 +313,6 @@ export function AuthPagesRoutes(): Hono {
     const user: { id: string; username: string; role: string } | undefined = c.get("user")
     if (!user) return c.redirect("/auth/login")
     return c.html(settingsPage(user.username, user.role, user.id))
-  })
-
-  app.get("/bar.js", (c) => {
-    c.header("Content-Type", "application/javascript")
-    c.header("Cache-Control", "no-cache, no-store, must-revalidate")
-    return c.body(LOGOUT_BAR_SCRIPT)
   })
 
   app.get("/admin", (c) => {

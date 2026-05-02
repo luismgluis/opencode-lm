@@ -50,51 +50,59 @@ function getSessionToken(c: { req: { header: (name: string) => string | undefine
 }
 
 export const AuthMiddleware: MiddlewareHandler = async (c, next) => {
-  if (c.req.method === "OPTIONS") return next()
+  try {
+    if (c.req.method === "OPTIONS") return next()
 
-  const path = c.req.path
-  const publicPaths = ["/auth/login", "/auth/register", "/auth/session", "/auth/check-register", "/auth/logout", "/auth/bar.js", "/favicon.ico", "/favicon-v3.ico", "/favicon-96x96-v3.png", "/apple-touch-icon-v3.png", "/social-share.png", "/site.webmanifest"]
-  const isPublicPath = publicPaths.includes(path) || (c.req.method === "POST" && ["/auth/login", "/auth/register", "/auth/logout"].includes(path))
+    const path = c.req.path
+    const publicPaths = ["/auth/login", "/auth/register", "/auth/session", "/auth/check-register", "/auth/logout", "/favicon.ico", "/favicon-v3.ico", "/favicon-96x96-v3.png", "/apple-touch-icon-v3.png", "/social-share.png", "/site.webmanifest"]
+    const isPublicPath = publicPaths.includes(path) || (c.req.method === "POST" && ["/auth/login", "/auth/register", "/auth/logout"].includes(path))
 
-  // Try session-based auth
-  const token = getSessionToken(c)
-  if (token) {
-    const { getSessionByToken } = await import("./auth/session")
-    const session = getSessionByToken(token)
-    if (session) {
-      c.set("user", session.user)
-      return next()
+    const token = getSessionToken(c)
+    if (token) {
+      try {
+        const { getSessionByToken } = await import("./auth/session")
+        const session = getSessionByToken(token)
+        if (session) { c.set("user", session.user); return next() }
+      } catch {}
     }
-  }
 
-  // Public paths pass through
-  if (isPublicPath) return next()
+    if (isPublicPath) return next()
 
-  const isStaticAsset = path.startsWith("/assets/") || path.startsWith("/favicon") || path === "/site.webmanifest" || path === "/social-share.png" || path === "/apple-touch-icon-v3.png"
-  if (isStaticAsset) return next()
+    const isStaticAsset = path.startsWith("/assets/") || path.startsWith("/favicon") || path === "/site.webmanifest" || path === "/social-share.png" || path === "/apple-touch-icon-v3.png"
+    if (isStaticAsset) return next()
 
   const password = Flag.OPENCODE_SERVER_PASSWORD
-  const isApiPath = path.startsWith("/api/") || path.startsWith("/global/") || path.startsWith("/session/") || path.startsWith("/provider/") || path.startsWith("/event") || path.startsWith("/experimental/")
 
   if (password) {
+    // Check Basic Auth first
     const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
     const authHeader = c.req.header("authorization") ?? ""
     const tokenFromQuery = c.req.query("auth_token")
     const basicToken = tokenFromQuery || authHeader.startsWith("Basic ") ? (tokenFromQuery || authHeader.slice(6)) : null
     let validBasic = false
     if (basicToken) {
-      const decoded = Buffer.from(basicToken, "base64").toString()
-      const [user, pass] = decoded.split(":")
-      validBasic = user === username && pass === password
+      try {
+        const decoded = Buffer.from(basicToken, "base64").toString()
+        const [user, pass] = decoded.split(":")
+        validBasic = user === username && pass === password
+      } catch {}
     }
 
-    if (c.req.method === "GET" && !isApiPath) return c.redirect("/auth/login")
-
     if (validBasic) return next()
+
+    // Redirect browser navigation to /auth/login instead of returning 401
+    const accept = c.req.header("accept") ?? ""
+    const isBrowser = c.req.method === "GET" && (accept.includes("text/html") || path === "/")
+    if (isBrowser) return c.redirect("/auth/login")
+
     return c.json({ error: "Unauthorized" }, 401)
   }
 
   return next()
+  } catch (e) {
+    log.error("auth middleware error", { error: e instanceof Error ? e.message : String(e) })
+    return next()
+  }
 }
 
 export function LoggerMiddleware(backendAttributes: ServerBackend.Attributes): MiddlewareHandler {

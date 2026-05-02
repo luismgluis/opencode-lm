@@ -5,10 +5,15 @@ const segmenter =
     ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
     : undefined
 
-function first(value: string) {
+function chars(value: string, count: number) {
   if (!value) return ""
-  if (!segmenter) return Array.from(value)[0] ?? ""
-  return segmenter.segment(value)[Symbol.iterator]().next().value?.segment ?? Array.from(value)[0] ?? ""
+  if (!segmenter) return Array.from(value).slice(0, count).join("") ?? ""
+  const result: string[] = []
+  for (const seg of segmenter.segment(value)) {
+    if (result.length >= count) break
+    result.push(seg.segment)
+  }
+  return result.join("")
 }
 
 export interface AvatarProps extends ComponentProps<"div"> {
@@ -16,6 +21,7 @@ export interface AvatarProps extends ComponentProps<"div"> {
   src?: string
   background?: string
   foreground?: string
+  background2?: string
   size?: "small" | "normal" | "large"
 }
 
@@ -25,18 +31,21 @@ export function Avatar(props: AvatarProps) {
     "src",
     "background",
     "foreground",
+    "background2",
     "size",
     "class",
     "classList",
     "style",
   ])
-  const src = split.src // did this so i can zero it out to test fallback
+  const src = split.src
+  const isDual = () => !src && split.background && split.background2
   return (
     <div
       {...rest}
       data-component="avatar"
       data-size={split.size || "normal"}
       data-has-image={src ? "" : undefined}
+      data-dual={isDual() ? "" : undefined}
       classList={{
         ...split.classList,
         [split.class ?? ""]: !!split.class,
@@ -45,9 +54,10 @@ export function Avatar(props: AvatarProps) {
         ...(typeof split.style === "object" ? split.style : {}),
         ...(!src && split.background ? { "--avatar-bg": split.background } : {}),
         ...(!src && split.foreground ? { "--avatar-fg": split.foreground } : {}),
+        ...(!src && split.background2 ? { "--avatar-bg2": split.background2 } : {}),
       }}
     >
-      <Show when={src} fallback={first(split.fallback)}>
+      <Show when={src} fallback={chars(split.fallback, isDual() ? 2 : 1)}>
         {(src) => <img src={src()} draggable={false} data-slot="avatar-image" />}
       </Show>
     </div>

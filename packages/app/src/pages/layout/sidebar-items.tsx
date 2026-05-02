@@ -9,7 +9,7 @@ import { A, useParams } from "@solidjs/router"
 import { type Accessor, createMemo, For, type JSX, Match, Show, Switch } from "solid-js"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
-import { getAvatarColors, type LocalProject, useLayout } from "@/context/layout"
+import { getAvatarColorsPair, type LocalProject, useLayout } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
 import { messageAgentColor } from "@/utils/agent"
@@ -22,8 +22,8 @@ const OPENCODE_PROJECT_ID = "4b0ea68d7af9a6031a7ffda7ad66e0cb83315750"
 export function getProjectAvatarSource(id?: string, icon?: { color?: string; url?: string; override?: string }) {
   if (id === OPENCODE_PROJECT_ID) return "https://opencode.ai/favicon.svg"
   if (icon?.override) return icon?.override
-  if (icon?.color) return undefined
-  return icon?.url
+  if (icon?.url) return icon?.url
+  return undefined
 }
 
 export const ProjectIcon = (props: { project: LocalProject; class?: string; notify?: boolean }): JSX.Element => {
@@ -50,7 +50,7 @@ export const ProjectIcon = (props: { project: LocalProject; class?: string; noti
         <Avatar
           fallback={name()}
           src={getProjectAvatarSource(props.project.id, props.project.icon)}
-          {...getAvatarColors(props.project.icon?.color)}
+          {...getAvatarColorsPair(props.project.icon?.color)}
           class="size-full rounded"
           classList={{ "badge-mask": notify() }}
         />

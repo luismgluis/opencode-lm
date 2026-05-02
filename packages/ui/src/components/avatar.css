@@ -1,5 +1,6 @@
 [data-component="avatar"] {
   --avatar-bg: var(--color-surface-info-base);
+  --avatar-bg2: var(--color-surface-info-base);
   --avatar-fg: var(--color-text-base);
   display: flex;
   align-items: center;
@@ -12,6 +13,12 @@
   text-transform: uppercase;
   background-color: var(--avatar-bg);
   color: var(--avatar-fg);
+}
+
+[data-component="avatar"][data-dual] {
+  background: linear-gradient(135deg, var(--avatar-bg) 50%, var(--avatar-bg2) 50%);
+  gap: 0;
+  letter-spacing: -0.05em;
 }
 
 [data-component="avatar"][data-has-image] {

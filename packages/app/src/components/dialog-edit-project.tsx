@@ -8,7 +8,7 @@ import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
-import { type LocalProject, getAvatarColors } from "@/context/layout"
+import { type LocalProject, getAvatarColors, getAvatarColorsPair } from "@/context/layout"
 import { getFilename } from "@opencode-ai/core/util/path"
 import { Avatar } from "@opencode-ai/ui/avatar"
 import { useLanguage } from "@/context/language"
@@ -154,7 +154,7 @@ export function DialogEditProject(props: { project: LocalProject }) {
                       <div class="size-full flex items-center justify-center">
                         <Avatar
                           fallback={store.name || defaultName()}
-                          {...getAvatarColors(store.color)}
+                          {...getAvatarColorsPair(store.color)}
                           class="size-full text-[32px]"
                         />
                       </div>

@@ -33,6 +33,17 @@ export function getAvatarColors(key?: string) {
   }
 }
 
+export function getAvatarColorsPair(key?: string) {
+  const base = getAvatarColors(key)
+  if (!key || !AVATAR_COLOR_KEYS.includes(key as AvatarColorKey)) return { ...base, background2: undefined }
+  const idx = AVATAR_COLOR_KEYS.indexOf(key as AvatarColorKey)
+  const next = AVATAR_COLOR_KEYS[(idx + 1) % AVATAR_COLOR_KEYS.length]
+  return {
+    ...base,
+    background2: `var(--avatar-background-${next})`,
+  }
+}
+
 type SessionTabs = {
   active?: string
   all: string[]
