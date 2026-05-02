@@ -18,6 +18,8 @@ import { WorkspaceRouterMiddleware } from "./workspace"
 import { InstanceMiddleware } from "./routes/instance/middleware"
 import { WorkspaceRoutes } from "./routes/control/workspace"
 import { ExperimentalHttpApiServer } from "./routes/instance/httpapi/server"
+import { AuthRoutes, UserManagementRoutes } from "./auth/routes"
+import { AuthPagesRoutes } from "./auth/pages"
 import * as ServerBackend from "./backend"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
@@ -124,6 +126,9 @@ function createHono(
 
   return {
     app: app
+      .route("/auth", AuthRoutes())
+      .route("/auth", AuthPagesRoutes())
+      .route("/api/users", UserManagementRoutes())
       .route("/", ControlPlaneRoutes())
       .route("/", workspaceApp)
       .route("/", InstanceRoutes(runtime.upgradeWebSocket))

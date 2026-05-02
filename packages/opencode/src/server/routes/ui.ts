@@ -16,6 +16,19 @@ const DEFAULT_CSP =
 const csp = (hash = "") =>
   `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'${hash ? ` 'sha256-${hash}'` : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' data:; connect-src 'self' data:`
 
+const LOGOUT_BAR_HTML = `<!-- oc-logout-bar -->
+<div id="ocAuthBar" style="position:fixed;top:0;right:0;z-index:99999;display:none;align-items:center;gap:8px;padding:6px 14px;background:#161b22;border:1px solid #30363d;border-radius:0 0 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#c9d1d9;box-shadow:0 2px 8px rgba(0,0,0,0.3)">
+  <span style="color:#8b949e" id="ocUserName"></span>
+  <a href="/auth/portal" style="color:#58a6ff;text-decoration:none;font-size:13px">Settings</a>
+  <span style="color:#30363d">|</span>
+  <a href="/auth/logout" style="color:#f85149;text-decoration:none;font-weight:600;font-size:13px">Logout</a>
+</div>
+<script src="/auth/bar.js"></script>`
+
+function injectLogoutBar(html: string): string {
+  return html.replace("</body>", LOGOUT_BAR_HTML + "\n</body>")
+}
+
 export const UIRoutes = (): Hono =>
   new Hono().all("/*", async (c) => {
     const embeddedWebUI = await embeddedUIPromise
@@ -29,7 +42,9 @@ export const UIRoutes = (): Hono =>
         const mime = getMimeType(match) ?? "text/plain"
         c.header("Content-Type", mime)
         if (mime.startsWith("text/html")) {
+          const content = await fs.readFile(match, "utf-8")
           c.header("Content-Security-Policy", DEFAULT_CSP)
+          return c.body(injectLogoutBar(content))
         }
         return c.body(new Uint8Array(await fs.readFile(match)))
       } else {
@@ -43,13 +58,16 @@ export const UIRoutes = (): Hono =>
           host: "app.opencode.ai",
         },
       })
-      const match = response.headers.get("content-type")?.includes("text/html")
-        ? (await response.clone().text()).match(
-            /<script\b(?![^>]*\bsrc\s*=)[^>]*\bid=(['"])oc-theme-preload-script\1[^>]*>([\s\S]*?)<\/script>/i,
-          )
-        : undefined
-      const hash = match ? createHash("sha256").update(match[2]).digest("base64") : ""
-      response.headers.set("Content-Security-Policy", csp(hash))
+      const isHtml = response.headers.get("content-type")?.includes("text/html")
+      if (isHtml) {
+        const text = await response.clone().text()
+        const match = text.match(
+          /<script\b(?![^>]*\bsrc\s*=)[^>]*\bid=(['"])oc-theme-preload-script\1[^>]*>([\s\S]*?)<\/script>/i,
+        )
+        const hash = match ? createHash("sha256").update(match[2]).digest("base64") : ""
+        response.headers.set("Content-Security-Policy", csp(hash))
+        return c.body(injectLogoutBar(text))
+      }
       return response
     }
   })
