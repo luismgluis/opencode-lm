@@ -312,7 +312,7 @@ export function AuthPagesRoutes(): Hono {
   app.get("/settings", (c) => {
     const user: { id: string; username: string; role: string } | undefined = c.get("user")
     if (!user) return c.redirect("/auth/login")
-    return c.html(settingsPage(user.username, user.role, user.id))
+    return c.html(settingsPage(user.username, user.role))
   })
 
   app.get("/admin", (c) => {
