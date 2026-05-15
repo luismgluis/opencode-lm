@@ -21,6 +21,7 @@ import { ExperimentalHttpApiServer } from "./routes/instance/httpapi/server"
 import { AuthRoutes, UserManagementRoutes } from "./auth/routes"
 import { AuthPagesRoutes } from "./auth/pages"
 import * as ServerBackend from "./backend"
+import { WebSocketTracker } from "./routes/instance/httpapi/websocket-tracker"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -138,10 +139,6 @@ function createHono(
 }
 
 export async function openapi() {
-  // Build a fresh app with all routes registered directly so
-  // hono-openapi can see describeRoute metadata (`.route()` wraps
-  // handlers when the sub-app has a custom errorHandler, which
-  // strips the metadata symbol).
   const { app } = createHono({})
   const result = await generateSpecs(app, {
     documentation: {
