@@ -8,6 +8,12 @@ import { isPublicUIPath } from "@/server/shared/public-ui"
 const AUTH_TOKEN_QUERY = "auth_token"
 const UNAUTHORIZED = 401
 const WWW_AUTHENTICATE = 'Basic realm="Secure Area"'
+const SESSION_COOKIE = "opencode_session"
+
+// Paths that bypass Basic Auth — they use session-based auth instead
+function isAuthPath(pathname: string) {
+  return pathname.startsWith("/auth/") || pathname.startsWith("/api/users/")
+}
 
 // Avoid HttpApiSecurity alternatives here: Effect security middleware wraps the
 // full handler, so a downstream failure can make the next auth alternative run
@@ -100,6 +106,28 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
         const url = new URL(request.url, "http://localhost")
         if (isPublicUIPath(request.method, url.pathname)) return yield* effect
         if (hasPtyConnectTicketURL(url)) return yield* effect
+        if (isAuthPath(url.pathname)) return yield* effect
+
+        // Check session token from cookie or Authorization header
+        const cookie = request.headers["cookie"] ?? ""
+        const sessionMatch = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`))
+        if (sessionMatch) {
+          try {
+            const { getSessionByToken } = yield* Effect.promise(() => import("@/server/auth/session"))
+            const session = getSessionByToken(decodeURIComponent(sessionMatch[1]))
+            if (session) return yield* effect
+          } catch {}
+        }
+
+        const authHeader = request.headers["authorization"] ?? ""
+        if (authHeader.startsWith("Bearer ")) {
+          try {
+            const { getSessionByToken } = yield* Effect.promise(() => import("@/server/auth/session"))
+            const session = getSessionByToken(authHeader.slice(7))
+            if (session) return yield* effect
+          } catch {}
+        }
+
         return yield* credentialFromURL(url, request).pipe(
           Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
         )
