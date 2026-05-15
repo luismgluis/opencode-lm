@@ -1,3 +1,4 @@
+import z from "zod"
 import { randomBytes } from "crypto"
 
 const prefixes = {
@@ -17,6 +18,10 @@ const prefixes = {
 } as const
 
 const LENGTH = 26
+
+export function schema(prefix: keyof typeof prefixes) {
+  return z.string().startsWith(prefixes[prefix])
+}
 
 // State for monotonic ID generation
 let lastTimestamp = 0
@@ -80,4 +85,10 @@ export function timestamp(id: string): number {
   return Number(encoded / BigInt(0x1000))
 }
 
-export * as Identifier from "./id"
+export const Identifier = {
+  schema,
+  ascending,
+  descending,
+  create,
+  timestamp,
+}

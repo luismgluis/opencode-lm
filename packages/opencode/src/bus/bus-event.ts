@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import z from "zod"
 import { EventV2 } from "@opencode-ai/core/event"
 
 export type Definition<Type extends string = string, Properties extends Schema.Top = Schema.Top> = {
@@ -40,6 +41,17 @@ export function effectPayloads() {
       )
       .toArray(),
   ]
+}
+
+export function payloads(): z.ZodTypeAny[] {
+  return effectPayloads().map(() =>
+    z
+      .object({
+        id: z.string(),
+        type: z.string(),
+        properties: z.any(),
+      }),
+  )
 }
 
 export * as BusEvent from "./bus-event"

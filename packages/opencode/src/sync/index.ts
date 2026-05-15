@@ -396,4 +396,19 @@ export function effectPayloads() {
   ]
 }
 
+import z from "zod"
+
+export function payloads(): z.ZodTypeAny[] {
+  return effectPayloads().map(() =>
+    z.object({
+      type: z.string(),
+      name: z.string(),
+      id: z.string(),
+      seq: z.number(),
+      aggregateID: z.string(),
+      data: z.any(),
+    }),
+  )
+}
+
 export * as SyncEvent from "."

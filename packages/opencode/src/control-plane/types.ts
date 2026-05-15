@@ -26,17 +26,10 @@ export const WorkspaceAdapterEntry = Schema.Struct({
 })
 export type WorkspaceAdapterEntry = Schema.Schema.Type<typeof WorkspaceAdapterEntry>
 
-export type Target =
-  | {
-      type: "local"
-      directory: string
-    }
-  | {
-      type: "remote"
-      url: string | URL
-      headers?: HeadersInit
-    }
+export const WorkspaceAdaptorEntry = WorkspaceAdapterEntry
+export type WorkspaceAdaptorEntry = WorkspaceAdapterEntry
 
+export type WorkspaceAdaptor = WorkspaceAdapter
 export type WorkspaceAdapter = {
   name: string
   description: string

@@ -1087,3 +1087,34 @@ function route(url: string | URL, path: string) {
 }
 
 export * as Workspace from "./workspace"
+
+import { makeRuntime } from "@opencode-ai/core/effect/runtime"
+import { FetchHttpClient } from "effect/unstable/http"
+import { AppFileSystem } from "@opencode-ai/core/filesystem"
+import { SessionPrompt } from "@/session/prompt"
+import { SyncEvent } from "@/sync"
+import { Project } from "@/project/project"
+import { Vcs } from "@/project/vcs"
+import { RuntimeFlags } from "@/effect/runtime-flags"
+import { Auth } from "@/auth"
+import { Session } from "@/session/session"
+import { Layer } from "effect"
+
+const { runPromise } = makeRuntime(
+  Service,
+  layer.pipe(
+    Layer.provide(Auth.defaultLayer),
+    Layer.provide(Session.defaultLayer),
+    Layer.provide(SyncEvent.defaultLayer),
+    Layer.provide(SessionPrompt.defaultLayer),
+    Layer.provide(Project.defaultLayer),
+    Layer.provide(Vcs.defaultLayer),
+    Layer.provide(AppFileSystem.defaultLayer),
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provide(RuntimeFlags.defaultLayer),
+  ),
+)
+
+export function startWorkspaceSyncing(projectID: ProjectID): Promise<void> {
+  return runPromise((svc) => svc.startWorkspaceSyncing(projectID))
+}

@@ -31,6 +31,10 @@ export type Sync = (event: Payload) => Effect.Effect<void>
 
 export const registry = new Map<string, Definition>()
 
+export function payloads() {
+  return Array.from(registry.values()).map((def) => def)
+}
+
 export function define<const Type extends string, Fields extends Schema.Struct.Fields>(input: {
   readonly type: Type
   readonly version?: number

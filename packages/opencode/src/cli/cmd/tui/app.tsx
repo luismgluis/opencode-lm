@@ -468,7 +468,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
           dialog.replace(() => <DialogSessionList />)
         },
       },
-    },
     {
       name: "automation.list",
       title: "Automations",
@@ -493,7 +492,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         dialog.clear()
       },
     },
-      },
       ...(Flag.OPENCODE_EXPERIMENTAL_SESSION_SWITCHING
         ? [
             {
