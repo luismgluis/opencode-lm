@@ -1,4 +1,5 @@
 import { Hono } from "hono"
+import { getSessionByToken } from "./session"
 
 function layout(title: string, body: string): string {
   return `<!DOCTYPE html>
@@ -253,6 +254,25 @@ function adminPageHtml(username: string, role: string): string {
 </script>`)
 }
 
+function getSessionUser(c: any): { id: string; username: string; role: string } | null {
+  try {
+    const cookie = c.req.header("cookie")
+    const match = cookie?.match(/opencode_session=([^;]+)/)
+    const token = match?.[1]
+    
+    const sessionToken = token ? decodeURIComponent(token) : (() => {
+      const auth = c.req.header("authorization")
+      return auth?.startsWith("Bearer ") ? auth.slice(7) : null
+    })()
+    
+    if (!sessionToken) return null
+    const session = getSessionByToken(sessionToken)
+    return session ? session.user : null
+  } catch {
+    return null
+  }
+}
+
 export function AuthPagesRoutes(): Hono {
   const app = new Hono()
 
@@ -265,19 +285,19 @@ export function AuthPagesRoutes(): Hono {
   })
 
   app.get("/portal", (c) => {
-    const user = (c as any).get("user") as { username: string; role: string } | undefined
+    const user = getSessionUser(c)
     if (!user) return c.redirect("/auth/login")
     return c.html(portalPage(user.username, user.role))
   })
 
   app.get("/settings", (c) => {
-    const user = (c as any).get("user") as { id: string; username: string; role: string } | undefined
+    const user = getSessionUser(c)
     if (!user) return c.redirect("/auth/login")
     return c.html(settingsPage(user.username, user.role))
   })
 
   app.get("/admin", (c) => {
-    const user = (c as any).get("user") as { username: string; role: string } | undefined
+    const user = getSessionUser(c)
     if (!user) return c.redirect("/auth/login")
     if (user.role !== "admin") return c.html("<h1>Forbidden: Admin only</h1>", 403)
     return c.html(adminPageHtml(user.username, user.role))

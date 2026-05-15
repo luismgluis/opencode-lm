@@ -7,6 +7,7 @@ import {
   HttpMiddleware,
   HttpRouter,
   HttpServer,
+  HttpServerRequest,
   HttpServerResponse,
 } from "effect/unstable/http"
 import * as Socket from "effect/unstable/socket/Socket"
@@ -160,6 +161,29 @@ const instanceRoutes = Layer.mergeAll(rawInstanceRoutes, instanceApiRoutes).pipe
 // the same Uint8Array instead of re-stringifying the spec.
 const docResponse = lazy(() => HttpServerResponse.jsonUnsafe(OpenApi.fromApi(PublicApi)))
 
+// Helper to bridge Hono fetch to Effect HttpServerResponse
+function handleHonoRequest(app: Hono, request: HttpServerRequest.HttpServerRequest, method: string, path: string): Effect.Effect<HttpServerResponse.HttpServerResponse> {
+  return Effect.promise<HttpServerResponse.HttpServerResponse>(async () => {
+    const url = new URL(path, "http://localhost")
+    const origUrl = new URL(request.url, "http://localhost")
+    url.search = origUrl.search
+    const init: RequestInit & { headers: Record<string, string> } = {
+      method,
+      headers: request.headers as Record<string, string>,
+    }
+    if (method !== "GET") {
+      const textEffect = (request as any).text as Effect.Effect<string>
+      const text = await Effect.runPromise(textEffect)
+      if (text) init.body = text
+    }
+    const webResponse = await app.fetch(new Request(url, init))
+    return HttpServerResponse.text(await webResponse.text(), {
+      status: webResponse.status as any,
+      headers: Object.fromEntries(webResponse.headers.entries()),
+    })
+  })
+}
+
 const docRoute = HttpRouter.use((router) => router.add("GET", "/doc", () => Effect.succeed(docResponse()))).pipe(
   Layer.provide(authOnlyRouterLayer),
 )
@@ -169,62 +193,23 @@ const uiRoute = HttpRouter.use((router) =>
     const fs = yield* AppFileSystem.Service
     const client = yield* HttpClient.HttpClient
     const flags = yield* RuntimeFlags.Service
+
+    // Mount Hono auth app as a catch-all for /auth/* paths
+    const authHono = new Hono()
+      .route("/auth", AuthRoutes())
+      .route("/auth", AuthPagesRoutes())
+    yield* router.add("*", "/auth*", (request) => handleHonoRequest(authHono, request, request.method, new URL(request.url, "http://localhost").pathname))
+
+    // Mount users API routes
+    const usersHono = new Hono()
+      .route("/", UserManagementRoutes())
+    yield* router.add("*", "/api/users*", (request) => handleHonoRequest(usersHono, request, request.method, new URL(request.url, "http://localhost").pathname))
+
     yield* router.add("*", "/*", (request) =>
       serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
     )
   }),
 ).pipe(Layer.provide(authOnlyRouterLayer))
-
-// Hono-based auth app mounted as an Effect HttpRouter route
-// Serves login/register HTML pages and session-based auth API
-const authApp = new Hono()
-  .route("/", AuthRoutes())
-  .route("/", AuthPagesRoutes())
-
-const authRoute = HttpRouter.use((router) =>
-  Effect.gen(function* () {
-    yield* router.add("*", "/auth/*", (request) => {
-      const url = new URL(request.url, "http://localhost")
-      return Effect.promise(async () => {
-        const init: RequestInit & { headers: Record<string, string> } = {
-          method: request.method,
-          headers: request.headers as Record<string, string>,
-        }
-        if (request.method !== "GET" && request.method !== "HEAD") {
-          init.body = await new Response((request as any).body).arrayBuffer()
-        }
-        const webResponse = await authApp.fetch(new Request(url, init))
-        return HttpServerResponse.text(await webResponse.text(), {
-          status: webResponse.status as 200 | 201 | 204 | 301 | 302 | 304 | 307 | 308 | 400 | 401 | 403 | 404 | 409 | 500,
-          headers: Object.fromEntries(webResponse.headers.entries()),
-        })
-      })
-    })
-  }),
-).pipe(Layer.provide(ServerAuth.Config.defaultLayer))
-
-const usersRoute = HttpRouter.use((router) =>
-  Effect.gen(function* () {
-    const usersApp = new Hono().route("/", UserManagementRoutes())
-    yield* router.add("*", "/api/users/*", (request) => {
-      const url = new URL(request.url, "http://localhost")
-      return Effect.promise(async () => {
-        const init: RequestInit & { headers: Record<string, string> } = {
-          method: request.method,
-          headers: request.headers as Record<string, string>,
-        }
-        if (request.method !== "GET" && request.method !== "HEAD") {
-          init.body = await new Response((request as any).body).arrayBuffer()
-        }
-        const webResponse = await usersApp.fetch(new Request(url, init))
-        return HttpServerResponse.text(await webResponse.text(), {
-          status: webResponse.status as 200 | 201 | 204 | 301 | 302 | 304 | 307 | 308 | 400 | 401 | 403 | 404 | 409 | 500,
-          headers: Object.fromEntries(webResponse.headers.entries()),
-        })
-      })
-    })
-  }),
-)
 
 type RouteRequirements =
   | HttpRouter.HttpRouter
@@ -236,7 +221,7 @@ type RouteRequirements =
 export function createRoutes(
   corsOptions?: CorsOptions,
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
-  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, uiRoute, authRoute, usersRoute).pipe(
+  return Layer.mergeAll(rootApiRoutes, eventApiRoutes, instanceRoutes, docRoute, uiRoute).pipe(
     Layer.provide([
       errorLayer,
       compressionLayer,

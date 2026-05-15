@@ -86,8 +86,25 @@ export function AuthRoutes(): Hono {
 export function UserManagementRoutes(): Hono {
   const app = new Hono()
 
+  function currentUser(c: any): { id: string; username: string; role: string } | null {
+    try {
+      const cookie = c.req.header("cookie")
+      const match = cookie?.match(/opencode_session=([^;]+)/)
+      const token = match?.[1]
+      const sessionToken = token ? decodeURIComponent(token) : (() => {
+        const auth = c.req.header("authorization")
+        return auth?.startsWith("Bearer ") ? auth.slice(7) : null
+      })()
+      if (!sessionToken) return null
+      const session = getSessionByToken(sessionToken)
+      return session ? session.user : null
+    } catch {
+      return null
+    }
+  }
+
   app.put("/password", async (c) => {
-    const user = (c as any).get("user") as { id: string } | undefined
+    const user = currentUser(c)
     if (!user) return c.json({ error: "Unauthorized" }, 401)
     const { currentPassword, newPassword } = await c.req.json<{ currentPassword: string; newPassword: string }>()
     if (!currentPassword || !newPassword) return c.json({ error: "Current and new password required" }, 400)
@@ -100,7 +117,7 @@ export function UserManagementRoutes(): Hono {
   })
 
   app.put("/:id/password", async (c) => {
-    const actor = (c as any).get("user") as { role: string } | undefined
+    const actor = currentUser(c)
     if (!actor || actor.role !== "admin") return c.json({ error: "Forbidden" }, 403)
     const id = c.req.param("id")
     const { newPassword } = await c.req.json<{ newPassword: string }>()
@@ -112,7 +129,7 @@ export function UserManagementRoutes(): Hono {
   })
 
   app.get("/", async (c) => {
-    const user = (c as any).get("user") as { role: string } | undefined
+    const user = currentUser(c)
     if (!user || user.role !== "admin") return c.json({ error: "Forbidden" }, 403)
 
     const users = getAllUsers()
@@ -120,7 +137,7 @@ export function UserManagementRoutes(): Hono {
   })
 
   app.post("/", async (c) => {
-    const user = (c as any).get("user") as { role: string } | undefined
+    const user = currentUser(c)
     if (!user || user.role !== "admin") return c.json({ error: "Forbidden" }, 403)
 
     const { username, password, role } = await c.req.json<{ username: string; password: string; role?: string }>()
@@ -143,7 +160,7 @@ export function UserManagementRoutes(): Hono {
   })
 
   app.put("/:id", async (c) => {
-    const user = (c as any).get("user") as { role: string } | undefined
+    const user = currentUser(c)
     if (!user || user.role !== "admin") return c.json({ error: "Forbidden" }, 403)
 
     const id = c.req.param("id")
@@ -158,7 +175,7 @@ export function UserManagementRoutes(): Hono {
   })
 
   app.delete("/:id", async (c) => {
-    const user = (c as any).get("user") as { role: string; id: string } | undefined
+    const user = currentUser(c)
     if (!user || user.role !== "admin") return c.json({ error: "Forbidden" }, 403)
 
     const id = c.req.param("id")
