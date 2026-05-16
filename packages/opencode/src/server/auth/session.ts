@@ -1,10 +1,7 @@
-import { randomBytes } from "node:crypto"
+import { randomBytes, createHmac } from "node:crypto"
 import { eq } from "drizzle-orm"
 import { Database } from "../../storage/db"
 import { AuthSessionTable, UserTable } from "./user.sql"
-
-const SESSION_TOKEN_BYTES = 48
-const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 export type User = {
   id: string
@@ -12,62 +9,68 @@ export type User = {
   role: "admin" | "member"
 }
 
-export type Session = {
-  id: string
-  token: string
-  user: User
-  expiresAt: number
+export type TokenPayload = {
+  sub: string
+  username: string
+  role: "admin" | "member"
+  iat: number
+  exp: number
 }
 
-function generateToken(): string {
-  return randomBytes(SESSION_TOKEN_BYTES).toString("hex")
+const JWT_SECRET = process.env.OPENCODE_SERVER_PASSWORD || "opencode-jwt-secret-change-me"
+const JWT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+function base64url(buf: Buffer): string {
+  return buf.toString("base64url")
 }
 
-export function createSession(userId: string): Session {
-  const token = generateToken()
-  const id = randomBytes(16).toString("hex")
-  const expiresAt = Date.now() + SESSION_MAX_AGE_MS
-
-  Database.transaction((tx) => {
-    tx.insert(AuthSessionTable).values({ id, user_id: userId, token, expires_at: expiresAt }).run()
-  })
-
-  const user = Database.use((tx) =>
-    tx.select().from(UserTable).where(eq(UserTable.id, userId)).get()
-  )
-
-  return {
-    id,
-    token,
-    user: { id: user!.id, username: user!.username, role: user!.role as "admin" | "member" },
-    expiresAt,
-  }
+function base64urlDecode(str: string): Buffer {
+  return Buffer.from(str, "base64url")
 }
 
-export function getSessionByToken(token: string): Session | null {
-  const row = Database.use((tx) =>
-    tx.select().from(AuthSessionTable).where(eq(AuthSessionTable.token, token)).get()
-  )
-  if (!row) return null
-  if (row.expires_at < Date.now()) {
-    Database.transaction((tx) => tx.delete(AuthSessionTable).where(eq(AuthSessionTable.id, row.id)).run())
+function sign(payload: object): string {
+  const header = base64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })))
+  const body = base64url(Buffer.from(JSON.stringify(payload)))
+  const signature = createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest()
+  return `${header}.${body}.${base64url(signature)}`
+}
+
+function verify(token: string): TokenPayload | null {
+  try {
+    const parts = token.split(".")
+    if (parts.length !== 3) return null
+    const [headerB64, bodyB64, sigB64] = parts
+    const expectedSig = createHmac("sha256", JWT_SECRET)
+      .update(`${headerB64}.${bodyB64}`)
+      .digest()
+    if (!Buffer.from(expectedSig).equals(base64urlDecode(sigB64))) return null
+
+    const payload = JSON.parse(base64urlDecode(bodyB64).toString("utf8")) as TokenPayload
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null
+    return payload
+  } catch {
     return null
   }
-  const user = Database.use((tx) =>
-    tx.select().from(UserTable).where(eq(UserTable.id, row.user_id)).get()
-  )
-  if (!user) return null
-  return {
-    id: row.id,
-    token: row.token,
-    user: { id: user.id, username: user.username, role: user.role as "admin" | "member" },
-    expiresAt: row.expires_at,
-  }
 }
 
-export function deleteSession(token: string) {
-  Database.transaction((tx) => tx.delete(AuthSessionTable).where(eq(AuthSessionTable.token, token)).run())
+export function createToken(user: { id: string; username: string; role: string }): string {
+  const now = Math.floor(Date.now() / 1000)
+  return sign({
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+    iat: now,
+    exp: now + Math.floor(JWT_MAX_AGE_MS / 1000),
+  })
 }
+
+export function verifyToken(token: string): TokenPayload | null {
+  return verify(token)
+}
+
+export { sign, verify as verifyRaw }
+
+// ── User management (unchanged) ──
 
 export function getUserById(id: string) {
   return Database.use((tx) =>
@@ -105,4 +108,31 @@ export function updatePassword(id: string, passwordHash: string) {
   Database.transaction((tx) =>
     tx.update(UserTable).set({ password_hash: passwordHash }).where(eq(UserTable.id, id)).run()
   )
+}
+
+// Keep createSession/getSessionByToken for backward compat during migration
+export function createSession(userId: string) {
+  const user = getUserById(userId)
+  if (!user) throw new Error("User not found")
+  return {
+    id: userId,
+    token: createToken({ id: user.id, username: user.username, role: user.role }),
+    user: { id: user.id, username: user.username, role: user.role as "admin" | "member" },
+    expiresAt: Date.now() + JWT_MAX_AGE_MS,
+  }
+}
+
+export function getSessionByToken(token: string) {
+  const payload = verifyToken(token)
+  if (!payload) return null
+  return {
+    id: payload.sub,
+    token,
+    user: { id: payload.sub, username: payload.username, role: payload.role },
+    expiresAt: payload.exp * 1000,
+  }
+}
+
+export function deleteSession(_token: string) {
+  // JWT is stateless — no server-side cleanup needed
 }

@@ -119,6 +119,22 @@ const clearAuthToken = () => {
   history.replaceState(null, "", location.pathname + (params.size ? `?${params}` : "") + location.hash)
 }
 
+const getAuthToken = () => {
+  if (typeof localStorage === "undefined") return null
+  return localStorage.getItem("opencode_token")
+}
+
+const handleLogout = async () => {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem("opencode_token")
+    localStorage.removeItem("opencode_user")
+  }
+  window.location.href = "/auth/logout"
+}
+
+// Expose logout for components that need it
+if (typeof window !== "undefined") (window as any).__opencode_logout = handleLogout
+
 const platform: Platform = {
   platform: "web",
   version: pkg.version,
@@ -132,6 +148,7 @@ const platform: Platform = {
     return stored ? ServerConnection.Key.make(stored) : null
   },
   setDefaultServer: writeDefaultServerUrl,
+  logout: handleLogout,
 }
 
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -154,28 +171,33 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 }
 
 if (root instanceof HTMLElement) {
-  const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
-  clearAuthToken()
-  const server: ServerConnection.Http = {
-    type: "http",
-    authToken: !!auth,
-    http: {
-      url: getCurrentUrl(),
-      ...auth,
-    },
+  const token = getAuthToken()
+  if (!token && !import.meta.env.DEV) {
+    window.location.href = "/auth/login"
+  } else {
+    const auth = authFromToken(new URLSearchParams(location.search).get("auth_token"))
+    clearAuthToken()
+    const server: ServerConnection.Http = {
+      type: "http",
+      authToken: !!auth || !!token,
+      http: {
+        url: getCurrentUrl(),
+        ...auth,
+      },
+    }
+    render(
+      () => (
+        <PlatformProvider value={platform}>
+          <AppBaseProviders>
+            <AppInterface
+              defaultServer={ServerConnection.Key.make(getDefaultUrl())}
+              servers={[server]}
+              disableHealthCheck
+            />
+          </AppBaseProviders>
+        </PlatformProvider>
+      ),
+      root,
+    )
   }
-  render(
-    () => (
-      <PlatformProvider value={platform}>
-        <AppBaseProviders>
-          <AppInterface
-            defaultServer={ServerConnection.Key.make(getDefaultUrl())}
-            servers={[server]}
-            disableHealthCheck
-          />
-        </AppBaseProviders>
-      </PlatformProvider>
-    ),
-    root,
-  )
 }

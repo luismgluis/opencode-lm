@@ -87,6 +87,9 @@ export type Platform = {
 
   /** Read image from clipboard (desktop only) */
   readClipboardImage?(): Promise<File | null>
+
+  /** Logout and clear session */
+  logout?(): void | Promise<void>
 }
 
 export type DisplayBackend = "auto" | "wayland"

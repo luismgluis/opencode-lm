@@ -4,20 +4,37 @@ import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "e
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
 import { isPublicUIPath } from "@/server/shared/public-ui"
+import { createHmac } from "node:crypto"
 
 const AUTH_TOKEN_QUERY = "auth_token"
 const UNAUTHORIZED = 401
 const WWW_AUTHENTICATE = 'Basic realm="Secure Area"'
 const SESSION_COOKIE = "opencode_session"
 
-// Paths that bypass Basic Auth — they use session-based auth instead
+// JWT secret independent of Basic auth password
+const JWT_SECRET = process.env.OPENCODE_SERVER_PASSWORD || "opencode-jwt-secret-change-me"
+
+function verifyJWT(token: string): { sub: string; username: string; role: string } | null {
+  try {
+    const parts = token.split(".")
+    if (parts.length !== 3) return null
+    const [headerB64, bodyB64, sigB64] = parts
+    const expectedSig = createHmac("sha256", JWT_SECRET)
+      .update(`${headerB64}.${bodyB64}`)
+      .digest()
+    if (!Buffer.from(expectedSig).equals(Buffer.from(sigB64, "base64url"))) return null
+    const payload = JSON.parse(Buffer.from(bodyB64, "base64url").toString("utf8"))
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null
+    return { sub: payload.sub, username: payload.username, role: payload.role }
+  } catch {
+    return null
+  }
+}
+
 function isAuthPath(pathname: string) {
   return pathname.startsWith("/auth/") || pathname.startsWith("/api/users/")
 }
 
-// Avoid HttpApiSecurity alternatives here: Effect security middleware wraps the
-// full handler, so a downstream failure can make the next auth alternative run
-// and remap an authorized NotFound into Unauthorized.
 export class Authorization extends HttpApiMiddleware.Service<Authorization>()(
   "@opencode/ExperimentalHttpApiAuthorization",
   {
@@ -95,10 +112,18 @@ function validateRawCredential<A, E, R>(
   return effect
 }
 
+function extractJWT(request: HttpServerRequest.HttpServerRequest): string | null {
+  const authHeader = request.headers["authorization"] ?? ""
+  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7)
+  const cookie = request.headers["cookie"] ?? ""
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+// ── Router middleware: JWT always checked, Basic auth as optional fallback ──
 export const authorizationRouterMiddleware = HttpRouter.middleware()(
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
-    if (!ServerAuth.required(config)) return (effect) => effect
 
     return (effect) =>
       Effect.gen(function* () {
@@ -108,41 +133,53 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
         if (hasPtyConnectTicketURL(url)) return yield* effect
         if (isAuthPath(url.pathname)) return yield* effect
 
-        // Check session token from cookie or Authorization header
-        const cookie = request.headers["cookie"] ?? ""
-        const sessionMatch = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`))
-        if (sessionMatch) {
-          try {
-            const { getSessionByToken } = yield* Effect.promise(() => import("@/server/auth/session"))
-            const session = getSessionByToken(decodeURIComponent(sessionMatch[1]))
-            if (session) return yield* effect
-          } catch {}
+        // 1. JWT always checked first
+        const jwt = extractJWT(request)
+        if (jwt && verifyJWT(jwt)) return yield* effect
+
+        // 2. Only if JWT fails AND Basic auth is configured, fall back to Basic
+        if (ServerAuth.required(config)) {
+          return yield* credentialFromURL(url, request).pipe(
+            Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
+          )
         }
 
-        const authHeader = request.headers["authorization"] ?? ""
-        if (authHeader.startsWith("Bearer ")) {
-          try {
-            const { getSessionByToken } = yield* Effect.promise(() => import("@/server/auth/session"))
-            const session = getSessionByToken(authHeader.slice(7))
-            if (session) return yield* effect
-          } catch {}
-        }
-
-        return yield* credentialFromURL(url, request).pipe(
-          Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
+        // 3. No JWT and no Basic auth required → deny API access
+        return yield* Effect.succeed(
+          HttpServerResponse.empty({
+            status: UNAUTHORIZED,
+            headers: { "www-authenticate": WWW_AUTHENTICATE },
+          }),
         )
       })
   }),
 )
 
+// ── HttpApi layer: JWT always checked ──
 export const authorizationLayer = Layer.effect(
   Authorization,
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
-    if (!ServerAuth.required(config)) return Authorization.of((effect) => effect)
+
+    // Always check JWT; Basic auth as optional fallback
+    if (!ServerAuth.required(config)) {
+      return Authorization.of((effect) =>
+        Effect.gen(function* () {
+          const request = yield* HttpServerRequest.HttpServerRequest
+          const jwt = extractJWT(request)
+          if (jwt && verifyJWT(jwt)) return yield* effect
+          return yield* new HttpApiError.Unauthorized({})
+        }),
+      )
+    }
+
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
+        // Check JWT first
+        const jwt = extractJWT(request)
+        if (jwt && verifyJWT(jwt)) return yield* effect
+        // Fall back to Basic auth
         return yield* credentialFromRequest(request).pipe(
           Effect.flatMap((credential) => validateCredential(effect, credential, config)),
         )

@@ -110,7 +110,10 @@ function loginPage(): string {
     e.preventDefault(); err.style.display = \'none\';
     const r = await fetch(\'/auth/login\', { method:\'POST\', headers:{\'Content-Type\':\'application/json\'}, body:JSON.stringify({username:document.getElementById(\'username\').value, password:document.getElementById(\'password\').value}) });
     if (!r.ok) { const d = await r.json(); err.textContent = d.error || \'Login failed\'; err.style.display = \'block\'; return; }
-    window.location.href = \'/auth/portal\';
+    const data = await r.json();
+    localStorage.setItem('opencode_token', data.token);
+    localStorage.setItem('opencode_user', JSON.stringify(data.user));
+    window.location.href = '/';
   });
   fetch(\'/auth/session\').then(r => r.json()).then(d => { if (!d.user) fetch(\'/auth/check-register\').then(r => { if (r.status === 200) document.getElementById(\'registerLink\').style.display = \'block\'; }); });
 </script>`)
@@ -140,7 +143,10 @@ function registerPage(): string {
     e.preventDefault(); const err = document.getElementById(\'error\'); err.style.display = \'none\';
     const r = await fetch(\'/auth/register\', { method:\'POST\', headers:{\'Content-Type\':\'application/json\'}, body:JSON.stringify({username:document.getElementById(\'username\').value, password:document.getElementById(\'password\').value}) });
     if (!r.ok) { const d = await r.json(); err.textContent = d.error || \'Registration failed\'; err.style.display = \'block\'; return; }
-    window.location.href = \'/auth/portal\';
+    const data = await r.json();
+    localStorage.setItem('opencode_token', data.token);
+    localStorage.setItem('opencode_user', JSON.stringify(data.user));
+    window.location.href = '/';
   });
 </script>`)
 }

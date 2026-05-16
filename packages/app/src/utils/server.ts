@@ -24,6 +24,12 @@ export function createSdkForServer({
   server: ServerConnection.HttpBase
 }) {
   const auth = (() => {
+    // Bearer token from localStorage takes precedence
+    const token =
+      typeof localStorage !== "undefined" ? localStorage.getItem("opencode_token") : null
+    if (token) return { Authorization: `Bearer ${token}` }
+
+    // Fall back to Basic auth
     if (!server.password) return
     return {
       Authorization: `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`,

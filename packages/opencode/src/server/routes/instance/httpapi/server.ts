@@ -209,7 +209,7 @@ const uiRoute = HttpRouter.use((router) =>
       serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
     )
   }),
-).pipe(Layer.provide(authOnlyRouterLayer))
+)
 
 type RouteRequirements =
   | HttpRouter.HttpRouter
