@@ -94,7 +94,7 @@ export const SidebarContent = (props: {
           <Show when={props.onLogout}>
             <Tooltip placement={placement()} value="Sign out">
               <IconButton
-                icon="exit"
+                icon="arrow-right"
                 variant="ghost"
                 size="large"
                 onClick={props.onLogout}
