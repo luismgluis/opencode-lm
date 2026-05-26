@@ -297,15 +297,18 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
       payload: typeof PromptPayload.Type
     }) {
       yield* requireSession(ctx.params.sessionID)
+      yield* Effect.logInfo("prompt_async called", { sessionID: ctx.params.sessionID, payload: JSON.stringify(ctx.payload) })
       yield* promptSvc.prompt({ ...ctx.payload, sessionID: ctx.params.sessionID }).pipe(
         Effect.catchCause((cause) =>
           Effect.gen(function* () {
+            const pretty = Cause.pretty(cause)
             yield* Effect.logError("prompt_async failed").pipe(
-              Effect.annotateLogs({ sessionID: ctx.params.sessionID, cause }),
+              Effect.annotateLogs({ sessionID: ctx.params.sessionID, cause, pretty }),
             )
+            console.error("=== PROMPT_ASYNC ERROR ===", pretty)
             yield* bus.publish(Session.Event.Error, {
               sessionID: ctx.params.sessionID,
-              error: new NamedError.Unknown({ message: Cause.pretty(cause) }).toObject(),
+              error: new NamedError.Unknown({ message: pretty }).toObject(),
             })
           }),
         ),

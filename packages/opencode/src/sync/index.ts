@@ -146,7 +146,8 @@ export const layer = Layer.effect(Service)(
         throw new Error(`SyncEvent.run: "${def.aggregate}" required but not found: ${JSON.stringify(data)}`)
       }
 
-      if (def.version !== versions.get(def.type)) {
+      const v = versions.get(def.type)
+      if (v !== undefined && def.version !== v) {
         throw new Error(`SyncEvent.run: running old versions of events is not allowed: ${def.type}`)
       }
 
