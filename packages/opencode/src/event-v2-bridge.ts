@@ -7,20 +7,12 @@ import { InstanceRef, WorkspaceRef } from "@/effect/instance-ref"
 import { InstanceStore } from "@/project/instance-store"
 import { SyncEvent } from "@/sync"
 import { EventV2 } from "@opencode-ai/core/event"
+import "@opencode-ai/core/account"
 import "@opencode-ai/core/catalog"
 import "@opencode-ai/core/session-event"
 import { Context, Effect, Layer, Option } from "effect"
 
-const syncDefinitions = new WeakMap<EventV2.Definition, SyncEvent.Definition>()
-
-export function toSyncDefinition<D extends EventV2.Definition>(
-  definition: D,
-): SyncEvent.Definition<D["type"], D["data"], D["data"]> {
-  const cached = syncDefinitions.get(definition)
-  if (cached) return cached as SyncEvent.Definition<D["type"], D["data"], D["data"]>
-  if (definition.version === undefined)
-    throw new Error(`Event.toSyncDefinition: version required for ${definition.type}`)
-  if (!definition.aggregate) throw new Error(`Event.toSyncDefinition: aggregate required for ${definition.type}`)
+export function toSyncDefinition<D extends EventV2.Definition>(definition: D) {
   const result = {
     type: definition.type,
     version: definition.version,
@@ -28,8 +20,7 @@ export function toSyncDefinition<D extends EventV2.Definition>(
     schema: definition.data,
     properties: definition.data,
   }
-  syncDefinitions.set(definition, result)
-  return result
+  return result as SyncEvent.Definition<D["type"], D["data"], D["data"]>
 }
 
 export class Service extends Context.Service<Service, EventV2.Interface>()("@opencode/EventV2Bridge") {}
@@ -91,7 +82,7 @@ export const layer = Layer.effect(
 )
 
 export const defaultLayer = layer.pipe(
-  Layer.provideMerge(EventV2.defaultLayer),
+  Layer.provide(EventV2.defaultLayer),
   Layer.provide(SyncEvent.defaultLayer),
   Layer.provide(ProjectBus.defaultLayer),
 )

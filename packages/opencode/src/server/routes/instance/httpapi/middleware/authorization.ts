@@ -4,6 +4,7 @@ import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "e
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
 import { isPublicUIPath } from "@/server/shared/public-ui"
+import { UnauthorizedError } from "../errors"
 import { createHmac } from "node:crypto"
 
 const AUTH_TOKEN_QUERY = "auth_token"
@@ -39,6 +40,13 @@ export class Authorization extends HttpApiMiddleware.Service<Authorization>()(
   "@opencode/ExperimentalHttpApiAuthorization",
   {
     error: HttpApiError.UnauthorizedNoContent,
+  },
+) {}
+
+export class V2Authorization extends HttpApiMiddleware.Service<V2Authorization>()(
+  "@opencode/ExperimentalHttpApiV2Authorization",
+  {
+    error: UnauthorizedError,
   },
 ) {}
 
@@ -82,43 +90,32 @@ function decodeCredential(input: string) {
         },
       }),
     )
-}
+  }),
+)
 
-function credentialFromRequest(request: HttpServerRequest.HttpServerRequest) {
-  return credentialFromURL(new URL(request.url, "http://localhost"), request)
-}
-
-function credentialFromURL(url: URL, request: HttpServerRequest.HttpServerRequest) {
-  const token = url.searchParams.get(AUTH_TOKEN_QUERY)
-  if (token) return decodeCredential(token)
-  const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
-  if (match) return decodeCredential(match[1])
-  return Effect.succeed(emptyCredential())
-}
-
-function validateRawCredential<A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  credential: ServerAuth.DecodedCredentials,
-  config: ServerAuth.Info,
-) {
-  if (!ServerAuth.required(config)) return effect
-  if (!ServerAuth.authorized(credential, config))
-    return Effect.succeed(
-      HttpServerResponse.empty({
-        status: UNAUTHORIZED,
-        headers: { "www-authenticate": WWW_AUTHENTICATE },
+export const v2AuthorizationLayer = Layer.effect(
+  V2Authorization,
+  Effect.gen(function* () {
+    const config = yield* ServerAuth.Config
+    if (!ServerAuth.required(config)) return V2Authorization.of((effect) => effect)
+    return V2Authorization.of((effect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        return yield* credentialFromRequest(request).pipe(
+          Effect.flatMap((credential) =>
+            Effect.gen(function* () {
+              if (ServerAuth.authorized(credential, config)) return yield* effect
+              yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+                Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),
+              )
+              return yield* new UnauthorizedError({ message: "Authentication required" })
+            }),
+          ),
+        )
       }),
     )
-  return effect
-}
-
-function extractJWT(request: HttpServerRequest.HttpServerRequest): string | null {
-  const authHeader = request.headers["authorization"] ?? ""
-  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7)
-  const cookie = request.headers["cookie"] ?? ""
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`))
-  return match ? decodeURIComponent(match[1]) : null
-}
+  }),
+)
 
 // ── Router middleware: JWT always checked, Basic auth as optional fallback ──
 export const authorizationRouterMiddleware = HttpRouter.middleware()(
