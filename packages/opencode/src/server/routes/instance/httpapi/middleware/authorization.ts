@@ -90,8 +90,7 @@ function decodeCredential(input: string) {
         },
       }),
     )
-  }),
-)
+}
 
 export const v2AuthorizationLayer = Layer.effect(
   V2Authorization,
