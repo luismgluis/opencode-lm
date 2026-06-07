@@ -1,49 +1,45 @@
 import { randomBytes, createHmac } from "node:crypto"
-import { eq } from "drizzle-orm"
-import { drizzle, type SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
-import { Database } from "bun:sqlite"
-import { AuthSessionTable, UserTable } from "./user.sql"
-import type { SQLiteTransaction } from "drizzle-orm/sqlite-core"
 
-// Direct SQLite connection — independent of Effect-based Database service
-const dbPath = process.env.OPENCODE_STORAGE_PATH
-  ? `${process.env.OPENCODE_STORAGE_PATH}/opencode.db`
-  : (() => {
-      const flag = process.env.OPENCODE_DB
-      if (flag) {
-        if (flag === ":memory:" || flag.startsWith("/")) return flag
-        return `${process.env.HOME || "/root"}/.local/share/opencode/${flag}`
-      }
-      return `${process.env.HOME || "/root"}/.local/share/opencode/opencode-dev.db`
-    })()
+// ── Direct SQLite connection (no drizzle dependency) ──
 
-let _client: BunSQLiteDatabase | null = null
-function getClient(): BunSQLiteDatabase {
-  if (!_client) {
-    const sqlite = new Database(dbPath)
-    sqlite.exec("PRAGMA journal_mode = WAL")
-    sqlite.exec("PRAGMA busy_timeout = 5000")
-    _client = drizzle(sqlite)
+let _db: any = null
+function getDb() {
+  if (!_db) {
+    const { Database } = require("bun:sqlite")
+    const dbPath = "/root/.local/share/opencode/opencode-dev.db"
+    console.error("=== AUTH USING DB ===", dbPath)
+    _db = new Database(dbPath)
+    _db.exec("PRAGMA journal_mode = WAL")
+    _db.exec("PRAGMA busy_timeout = 5000")
+    // Ensure custom auth tables exist
+    _db.exec(`CREATE TABLE IF NOT EXISTS user (
+      id TEXT NOT NULL PRIMARY KEY,
+      username TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')),
+      time_created INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      time_updated INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    )`)
+    _db.exec(`CREATE TABLE IF NOT EXISTS auth_session (
+      id TEXT NOT NULL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      time_created INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      time_updated INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+    )`)
+    _db.exec("CREATE UNIQUE INDEX IF NOT EXISTS user_username_idx ON user(username)")
   }
-  return _client
-}
-
-type TxOrDb = BunSQLiteDatabase | SQLiteTransaction<"sync", void>
-
-function tx<T>(callback: (tx: TxOrDb) => T): T {
-  const client = getClient()
-  try {
-    return callback(client)
-  } catch {
-    // Fallback: let caller handle
-    return callback(client)
-  }
+  return _db
 }
 
 export type User = {
   id: string
   username: string
+  password_hash: string
   role: "admin" | "member"
+  time_created: number
+  time_updated: number
 }
 
 export type TokenPayload = {
@@ -107,62 +103,52 @@ export function verifyToken(token: string): TokenPayload | null {
 
 export { sign, verify as verifyRaw }
 
-// ── User management ──
+// ── User management (raw SQLite queries) ──
 
-export function getUserById(id: string) {
-  return tx((db) =>
-    db.select().from(UserTable).where(eq(UserTable.id, id)).get()
-  )
+export function getUserById(id: string): User | undefined {
+  return getDb().query("SELECT * FROM user WHERE id = ?").get(id)
 }
 
-export function getUserByUsername(username: string) {
-  return tx((db) =>
-    db.select().from(UserTable).where(eq(UserTable.username, username)).get()
-  )
+export function getUserByUsername(username: string): User | undefined {
+  return getDb().query("SELECT * FROM user WHERE username = ?").get(username)
 }
 
-export function getAllUsers() {
-  return tx((db) =>
-    db.select({ id: UserTable.id, username: UserTable.username, role: UserTable.role, time_created: UserTable.time_created }).from(UserTable).all()
-  )
+export function getAllUsers(): Array<{ id: string; username: string; role: string; time_created: number }> {
+  return getDb().query("SELECT id, username, role, time_created FROM user").all()
 }
 
 export function deleteUser(id: string) {
-  tx((db) => db.delete(UserTable).where(eq(UserTable.id, id)).run())
+  getDb().run("DELETE FROM user WHERE id = ?", id)
 }
 
 export function updateUserRole(id: string, role: "admin" | "member") {
-  tx((db) =>
-    db.update(UserTable).set({ role }).where(eq(UserTable.id, id)).run()
-  )
+  getDb().run("UPDATE user SET role = ?, time_updated = ? WHERE id = ?", role, Date.now(), id)
 }
 
 export function countUsers(): number {
-  return tx((db) => db.select().from(UserTable).all()).length
+  const row = getDb().query("SELECT COUNT(*) as count FROM user").get() as { count: number } | undefined
+  return row?.count ?? 0
 }
 
 export function updatePassword(id: string, passwordHash: string) {
-  tx((db) =>
-    db.update(UserTable).set({ password_hash: passwordHash }).where(eq(UserTable.id, id)).run()
-  )
+  getDb().run("UPDATE user SET password_hash = ?, time_updated = ? WHERE id = ?", passwordHash, Date.now(), id)
 }
 
 export function createUser(username: string, passwordHash: string, role: "admin" | "member") {
   const id = randomBytes(16).toString("hex")
-  tx((db) =>
-    db.insert(UserTable).values({ id, username, password_hash: passwordHash, role }).run()
-  )
+  getDb().run("INSERT INTO user (id, username, password_hash, role) VALUES (?, ?, ?, ?)", id, username, passwordHash, role)
   return id
 }
 
-// Keep createSession/getSessionByToken for backward compat during migration
+// Session helpers
+
 export function createSession(userId: string) {
   const user = getUserById(userId)
   if (!user) throw new Error("User not found")
   return {
     id: userId,
     token: createToken({ id: user.id, username: user.username, role: user.role }),
-    user: { id: user.id, username: user.username, role: user.role as "admin" | "member" },
+    user: { id: user.id, username: user.username, role: user.role },
     expiresAt: Date.now() + JWT_MAX_AGE_MS,
   }
 }
