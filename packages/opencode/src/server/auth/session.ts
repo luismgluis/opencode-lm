@@ -1,7 +1,44 @@
 import { randomBytes, createHmac } from "node:crypto"
 import { eq } from "drizzle-orm"
-import { Database } from "@opencode-ai/core/database/database"
+import { drizzle, type SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
+import { Database } from "bun:sqlite"
 import { AuthSessionTable, UserTable } from "./user.sql"
+import type { SQLiteTransaction } from "drizzle-orm/sqlite-core"
+
+// Direct SQLite connection — independent of Effect-based Database service
+const dbPath = process.env.OPENCODE_STORAGE_PATH
+  ? `${process.env.OPENCODE_STORAGE_PATH}/opencode.db`
+  : (() => {
+      const flag = process.env.OPENCODE_DB
+      if (flag) {
+        if (flag === ":memory:" || flag.startsWith("/")) return flag
+        return `${process.env.HOME || "/root"}/.local/share/opencode/${flag}`
+      }
+      return `${process.env.HOME || "/root"}/.local/share/opencode/opencode-dev.db`
+    })()
+
+let _client: BunSQLiteDatabase | null = null
+function getClient(): BunSQLiteDatabase {
+  if (!_client) {
+    const sqlite = new Database(dbPath)
+    sqlite.exec("PRAGMA journal_mode = WAL")
+    sqlite.exec("PRAGMA busy_timeout = 5000")
+    _client = drizzle(sqlite)
+  }
+  return _client
+}
+
+type TxOrDb = BunSQLiteDatabase | SQLiteTransaction<"sync", void>
+
+function tx<T>(callback: (tx: TxOrDb) => T): T {
+  const client = getClient()
+  try {
+    return callback(client)
+  } catch {
+    // Fallback: let caller handle
+    return callback(client)
+  }
+}
 
 export type User = {
   id: string
@@ -70,44 +107,52 @@ export function verifyToken(token: string): TokenPayload | null {
 
 export { sign, verify as verifyRaw }
 
-// ── User management (unchanged) ──
+// ── User management ──
 
 export function getUserById(id: string) {
-  return Database.use((tx) =>
-    tx.select().from(UserTable).where(eq(UserTable.id, id)).get()
+  return tx((db) =>
+    db.select().from(UserTable).where(eq(UserTable.id, id)).get()
   )
 }
 
 export function getUserByUsername(username: string) {
-  return Database.use((tx) =>
-    tx.select().from(UserTable).where(eq(UserTable.username, username)).get()
+  return tx((db) =>
+    db.select().from(UserTable).where(eq(UserTable.username, username)).get()
   )
 }
 
 export function getAllUsers() {
-  return Database.use((tx) =>
-    tx.select({ id: UserTable.id, username: UserTable.username, role: UserTable.role, time_created: UserTable.time_created }).from(UserTable).all()
+  return tx((db) =>
+    db.select({ id: UserTable.id, username: UserTable.username, role: UserTable.role, time_created: UserTable.time_created }).from(UserTable).all()
   )
 }
 
 export function deleteUser(id: string) {
-  Database.transaction((tx) => tx.delete(UserTable).where(eq(UserTable.id, id)).run())
+  tx((db) => db.delete(UserTable).where(eq(UserTable.id, id)).run())
 }
 
 export function updateUserRole(id: string, role: "admin" | "member") {
-  Database.transaction((tx) =>
-    tx.update(UserTable).set({ role }).where(eq(UserTable.id, id)).run()
+  tx((db) =>
+    db.update(UserTable).set({ role }).where(eq(UserTable.id, id)).run()
   )
 }
 
 export function countUsers(): number {
-  return Database.use((tx) => tx.select().from(UserTable).all()).length
+  return tx((db) => db.select().from(UserTable).all()).length
 }
 
 export function updatePassword(id: string, passwordHash: string) {
-  Database.transaction((tx) =>
-    tx.update(UserTable).set({ password_hash: passwordHash }).where(eq(UserTable.id, id)).run()
+  tx((db) =>
+    db.update(UserTable).set({ password_hash: passwordHash }).where(eq(UserTable.id, id)).run()
   )
+}
+
+export function createUser(username: string, passwordHash: string, role: "admin" | "member") {
+  const id = randomBytes(16).toString("hex")
+  tx((db) =>
+    db.insert(UserTable).values({ id, username, password_hash: passwordHash, role }).run()
+  )
+  return id
 }
 
 // Keep createSession/getSessionByToken for backward compat during migration
