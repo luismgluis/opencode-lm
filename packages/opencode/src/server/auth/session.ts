@@ -1,6 +1,6 @@
 import { randomBytes, createHmac } from "node:crypto"
 import { eq } from "drizzle-orm"
-import { Database } from "../../storage/db"
+import { Database } from "@opencode-ai/core/database/database"
 import { AuthSessionTable, UserTable } from "./user.sql"
 
 export type User = {

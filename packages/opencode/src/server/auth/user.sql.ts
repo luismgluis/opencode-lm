@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core"
-import { Timestamps } from "../../storage/schema.sql"
+import { Timestamps } from "@opencode-ai/core/database/schema.sql"
 
 export const UserTable = sqliteTable("user", {
   id: text().primaryKey(),

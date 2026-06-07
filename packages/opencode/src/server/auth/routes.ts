@@ -12,7 +12,7 @@ import {
   getUserById,
   updatePassword,
 } from "./session"
-import { Database } from "../../storage/db"
+import { Database } from "@opencode-ai/core/database/database"
 import { UserTable } from "./user.sql"
 
 // ── JWT Auth Middleware for Hono ──
