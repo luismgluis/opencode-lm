@@ -4,15 +4,18 @@ import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "e
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
 import { isPublicUIPath } from "@/server/shared/public-ui"
-import { UnauthorizedError } from "../errors"
 import { createHmac } from "node:crypto"
+export {
+  Authorization as ServerAuthorization,
+  authorizationLayer as serverAuthorizationLayer,
+} from "@opencode-ai/server/middleware/authorization"
 
 const AUTH_TOKEN_QUERY = "auth_token"
 const UNAUTHORIZED = 401
 const WWW_AUTHENTICATE = 'Basic realm="Secure Area"'
 const SESSION_COOKIE = "opencode_session"
 
-// JWT secret independent of Basic auth password
+// JWT secret: same as password env var, or default fallback
 const JWT_SECRET = process.env.OPENCODE_SERVER_PASSWORD || "opencode-jwt-secret-change-me"
 
 function verifyJWT(token: string): { sub: string; username: string; role: string } | null {
@@ -32,10 +35,25 @@ function verifyJWT(token: string): { sub: string; username: string; role: string
   }
 }
 
+function extractJWT(request: HttpServerRequest.HttpServerRequest): string | null {
+  // 1. Check Authorization: Bearer header
+  const auth = request.headers.authorization ?? ""
+  const bearerMatch = /^Bearer\s+(.+)$/i.exec(auth)
+  if (bearerMatch) return bearerMatch[1]
+  // 2. Check opencode_session cookie
+  const cookie = request.headers.cookie ?? ""
+  const cookieMatch = new RegExp(`${SESSION_COOKIE}=([^;]+)`).exec(cookie)
+  if (cookieMatch) return decodeURIComponent(cookieMatch[1])
+  return null
+}
+
 function isAuthPath(pathname: string) {
   return pathname.startsWith("/auth/") || pathname.startsWith("/api/users/")
 }
 
+// Avoid HttpApiSecurity alternatives here: Effect security middleware wraps the
+// full handler, so a downstream failure can make the next auth alternative run
+// and remap an authorized NotFound into Unauthorized.
 export class Authorization extends HttpApiMiddleware.Service<Authorization>()(
   "@opencode/ExperimentalHttpApiAuthorization",
   {
@@ -43,10 +61,10 @@ export class Authorization extends HttpApiMiddleware.Service<Authorization>()(
   },
 ) {}
 
-export class V2Authorization extends HttpApiMiddleware.Service<V2Authorization>()(
-  "@opencode/ExperimentalHttpApiV2Authorization",
+export class PtyConnectAuthorization extends HttpApiMiddleware.Service<PtyConnectAuthorization>()(
+  "@opencode/ExperimentalHttpApiPtyConnectAuthorization",
   {
-    error: UnauthorizedError,
+    error: HttpApiError.UnauthorizedNoContent,
   },
 ) {}
 
@@ -75,48 +93,50 @@ function validateCredential<A, E, R>(
 }
 
 function decodeCredential(input: string) {
-  return Encoding.decodeBase64String(input)
-    .asEffect()
-    .pipe(
-      Effect.match({
-        onFailure: emptyCredential,
-        onSuccess: (header) => {
-          const parts = header.split(":")
-          if (parts.length !== 2) return emptyCredential()
-          return {
-            username: parts[0],
-            password: Redacted.make(parts[1]),
-          }
-        },
-      }),
-    )
+  return Effect.fromResult(Encoding.decodeBase64String(input)).pipe(
+    Effect.match({
+      onFailure: emptyCredential,
+      onSuccess: (header) => {
+        const separator = header.indexOf(":")
+        if (separator === -1) return emptyCredential()
+        return {
+          username: header.slice(0, separator),
+          password: Redacted.make(header.slice(separator + 1)),
+        }
+      },
+    }),
+  )
 }
 
-export const v2AuthorizationLayer = Layer.effect(
-  V2Authorization,
-  Effect.gen(function* () {
-    const config = yield* ServerAuth.Config
-    if (!ServerAuth.required(config)) return V2Authorization.of((effect) => effect)
-    return V2Authorization.of((effect) =>
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest
-        return yield* credentialFromRequest(request).pipe(
-          Effect.flatMap((credential) =>
-            Effect.gen(function* () {
-              if (ServerAuth.authorized(credential, config)) return yield* effect
-              yield* HttpEffect.appendPreResponseHandler((_request, response) =>
-                Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),
-              )
-              return yield* new UnauthorizedError({ message: "Authentication required" })
-            }),
-          ),
-        )
+function credentialFromRequest(request: HttpServerRequest.HttpServerRequest) {
+  return credentialFromURL(new URL(request.url, "http://localhost"), request)
+}
+
+function credentialFromURL(url: URL, request: HttpServerRequest.HttpServerRequest) {
+  const token = url.searchParams.get(AUTH_TOKEN_QUERY)
+  if (token) return decodeCredential(token)
+  const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
+  if (match) return decodeCredential(match[1])
+  return Effect.succeed(emptyCredential())
+}
+
+function validateRawCredential<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  credential: ServerAuth.DecodedCredentials,
+  config: ServerAuth.Info,
+) {
+  if (!ServerAuth.required(config)) return effect
+  if (!ServerAuth.authorized(credential, config))
+    return Effect.succeed(
+      HttpServerResponse.empty({
+        status: UNAUTHORIZED,
+        headers: { "www-authenticate": WWW_AUTHENTICATE },
       }),
     )
-  }),
-)
+  return effect
+}
 
-// ── Router middleware: JWT always checked, Basic auth as optional fallback ──
+// Router middleware: checks JWT first, falls back to Basic auth
 export const authorizationRouterMiddleware = HttpRouter.middleware()(
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
@@ -129,18 +149,18 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
         if (hasPtyConnectTicketURL(url)) return yield* effect
         if (isAuthPath(url.pathname)) return yield* effect
 
-        // 1. JWT always checked first
+        // 1. Try JWT first
         const jwt = extractJWT(request)
         if (jwt && verifyJWT(jwt)) return yield* effect
 
-        // 2. Only if JWT fails AND Basic auth is configured, fall back to Basic
+        // 2. Fall back to Basic auth if configured
         if (ServerAuth.required(config)) {
           return yield* credentialFromURL(url, request).pipe(
             Effect.flatMap((credential) => validateRawCredential(effect, credential, config)),
           )
         }
 
-        // 3. No JWT and no Basic auth required → deny API access
+        // 3. No JWT and no Basic auth → deny
         return yield* Effect.succeed(
           HttpServerResponse.empty({
             status: UNAUTHORIZED,
@@ -151,13 +171,12 @@ export const authorizationRouterMiddleware = HttpRouter.middleware()(
   }),
 )
 
-// ── HttpApi layer: JWT always checked ──
+// HttpApi middleware layer: checks JWT first, falls back to Basic auth
 export const authorizationLayer = Layer.effect(
   Authorization,
   Effect.gen(function* () {
     const config = yield* ServerAuth.Config
 
-    // Always check JWT; Basic auth as optional fallback
     if (!ServerAuth.required(config)) {
       return Authorization.of((effect) =>
         Effect.gen(function* () {
@@ -172,11 +191,27 @@ export const authorizationLayer = Layer.effect(
     return Authorization.of((effect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
-        // Check JWT first
         const jwt = extractJWT(request)
         if (jwt && verifyJWT(jwt)) return yield* effect
-        // Fall back to Basic auth
         return yield* credentialFromRequest(request).pipe(
+          Effect.flatMap((credential) => validateCredential(effect, credential, config)),
+        )
+      }),
+    )
+  }),
+)
+
+export const ptyConnectAuthorizationLayer = Layer.effect(
+  PtyConnectAuthorization,
+  Effect.gen(function* () {
+    const config = yield* ServerAuth.Config
+    if (!ServerAuth.required(config)) return PtyConnectAuthorization.of((effect) => effect)
+    return PtyConnectAuthorization.of((effect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(request.url, "http://localhost")
+        if (hasPtyConnectTicketURL(url)) return yield* effect
+        return yield* credentialFromURL(url, request).pipe(
           Effect.flatMap((credential) => validateCredential(effect, credential, config)),
         )
       }),
