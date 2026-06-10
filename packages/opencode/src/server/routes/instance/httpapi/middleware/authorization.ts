@@ -18,7 +18,7 @@ const SESSION_COOKIE = "opencode_session"
 // JWT secret: same as password env var, or default fallback
 const JWT_SECRET = process.env.OPENCODE_SERVER_PASSWORD || "opencode-jwt-secret-change-me"
 
-function verifyJWT(token: string): { sub: string; username: string; role: string } | null {
+export function verifyJWT(token: string): { sub: string; username: string; role: string } | null {
   try {
     const parts = token.split(".")
     if (parts.length !== 3) return null
@@ -35,7 +35,7 @@ function verifyJWT(token: string): { sub: string; username: string; role: string
   }
 }
 
-function extractJWT(request: HttpServerRequest.HttpServerRequest): string | null {
+export function extractJWT(request: HttpServerRequest.HttpServerRequest): string | null {
   // 1. Check Authorization: Bearer header
   const auth = request.headers.authorization ?? ""
   const bearerMatch = /^Bearer\s+(.+)$/i.exec(auth)

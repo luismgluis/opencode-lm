@@ -70,8 +70,10 @@ import { PublicApi } from "./public"
 import {
   authorizationLayer,
   authorizationRouterMiddleware,
+  extractJWT,
   ptyConnectAuthorizationLayer,
   serverAuthorizationLayer,
+  verifyJWT,
 } from "./middleware/authorization"
 import { EventApi } from "./groups/event"
 import { PtyConnectApi } from "./groups/pty"
@@ -223,7 +225,19 @@ const uiRoute = HttpRouter.use((router) =>
     yield* router.add("*", "/api/users*", (request) => handleHonoRequest(usersHono, request, request.method, new URL(request.url, "http://localhost").pathname))
 
     yield* router.add("*", "/*", (request) =>
-      serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi }),
+      Effect.gen(function* () {
+        const url = new URL(request.url, "http://localhost")
+        // Redirect root path to /auth/login if no valid JWT
+        if (url.pathname === "/" && request.method === "GET") {
+          const jwt = yield* Effect.sync(() => extractJWT(request))
+          if (!jwt || !verifyJWT(jwt)) {
+            return yield* Effect.succeed(
+              HttpServerResponse.empty({ status: 302 as any, headers: { location: "/auth/login" } } as any),
+            )
+          }
+        }
+        return yield* serveUIEffect(request, { fs, client, disableEmbeddedWebUi: flags.disableEmbeddedWebUi })
+      }),
     )
   }),
 )

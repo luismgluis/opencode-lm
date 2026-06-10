@@ -117,7 +117,7 @@ const defaultSettings: Settings = {
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
     showSessionProgressBar: true,
-    showCustomAgents: false,
+    showCustomAgents: true,
   },
   appearance: {
     fontSize: 14,
@@ -152,7 +152,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
   name: "Settings",
   gate: false,
   init: () => {
-    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
+    const [store, setStore, _, ready] = persisted("settings.v5", createStore<Settings>(defaultSettings))
 
     createEffect(() => {
       if (typeof document === "undefined") return

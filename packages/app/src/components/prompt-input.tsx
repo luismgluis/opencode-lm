@@ -1855,6 +1855,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <div
                         data-component="prompt-agent-control"
                         style={agentsShouldFadeIn() ? { animation: "fade-in 0.3s" } : undefined}
+                        data-agent={local.agent.current()?.name}
                       >
                         <TooltipKeybind
                           placement="top"
@@ -1870,8 +1871,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               local.agent.set(value)
                               restoreFocus()
                             }}
-                            class="capitalize max-w-[160px] text-text-base"
-                            valueClass="truncate text-13-regular text-text-base"
+                            class="capitalize max-w-[160px]"
+                            valueClass="truncate text-13-regular"
+                            classList={{
+                              "text-text-base": local.agent.current()?.name !== "plan",
+                              "text-[var(--icon-agent-plan-base)]!": local.agent.current()?.name === "plan",
+                            }}
                             triggerStyle={control()}
                             triggerProps={{ "data-action": "prompt-agent" }}
                             variant="ghost"
@@ -2135,9 +2140,16 @@ function ComposerPicker(props: { state: ComposerPickerState }) {
 }
 
 function ComposerAgentControl(props: { state: ComposerAgentControlState }) {
+  const isPlan = () => props.state.current === "plan"
   return (
-    <div class="relative">
-      <div class="pointer-events-none absolute left-2 top-1/2 z-10 flex size-4 -translate-y-1/2 items-center justify-center text-v2-icon-icon-muted">
+    <div class="relative" data-agent={props.state.current}>
+      <div
+        class="pointer-events-none absolute left-2 top-1/2 z-10 flex size-4 -translate-y-1/2 items-center justify-center"
+        classList={{
+          "text-v2-icon-icon-muted": !isPlan(),
+          "text-[var(--icon-agent-plan-base)]": isPlan(),
+        }}
+      >
         <Icon name="sliders" size="small" />
       </div>
       <TooltipKeybind placement="top" gutter={4} title={props.state.title} keybind={props.state.keybind}>
@@ -2146,8 +2158,12 @@ function ComposerAgentControl(props: { state: ComposerAgentControlState }) {
           options={props.state.options}
           current={props.state.current}
           onSelect={props.state.onSelect}
-          class="max-w-[175px] justify-start text-v2-text-text-faint [&_[data-component=icon]]:text-v2-icon-icon-muted"
-          valueClass="truncate pl-5 text-[13px] font-[440] leading-5 text-v2-text-text-faint"
+          class="max-w-[175px] justify-start"
+          valueClass="truncate pl-5 text-[13px] font-[440] leading-5"
+          classList={{
+            "text-v2-text-text-faint [&_[data-component=icon]]:text-v2-icon-icon-muted": !isPlan(),
+            "text-[var(--icon-agent-plan-base)]! [&_[data-component=icon]]:text-[var(--icon-agent-plan-base)]! [&_svg]:text-[var(--icon-agent-plan-base)]!": isPlan(),
+          }}
           triggerStyle={props.state.style}
           triggerProps={{ "data-action": "prompt-agent" }}
           variant="ghost"

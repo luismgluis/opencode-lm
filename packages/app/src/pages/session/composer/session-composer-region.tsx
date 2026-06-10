@@ -16,6 +16,7 @@ import { SessionRevertDock } from "@/pages/session/composer/session-revert-dock"
 import type { SessionComposerState } from "@/pages/session/composer/session-composer-state"
 import { SessionTodoDock } from "@/pages/session/composer/session-todo-dock"
 import type { FollowupDraft } from "@/components/prompt-input/submit"
+import { SessionQuickReplyDock } from "@/components/session-quick-reply-dock"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
 
@@ -262,6 +263,24 @@ export function SessionComposerRegion(props: {
                 when={child()}
                 fallback={
                   <Show when={!props.state.blocked()}>
+                    <SessionQuickReplyDock
+                      onSend={(message) => {
+                        prompt.set([{ type: "text", content: message, start: 0, end: message.length }] as any)
+                        // Focus the input after a small delay to let react reconcile
+                        requestAnimationFrame(() => {
+                          const editor = document.querySelector('[contenteditable="true"]') as HTMLElement
+                          editor?.focus()
+                          // Find the closest form and submit it
+                          const form = editor?.closest("form")
+                          if (form) {
+                            form.requestSubmit()
+                          } else {
+                            // Fallback: dispatch Enter key
+                            editor?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }))
+                          }
+                        })
+                      }}
+                    />
                     <PromptInput
                       variant={props.placement === "inline" ? "new-session" : undefined}
                       ref={props.inputRef}

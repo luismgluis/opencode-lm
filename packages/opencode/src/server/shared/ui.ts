@@ -57,6 +57,9 @@ function embeddedUIResponse(file: string, body: Uint8Array) {
   const headers = new Headers({ "content-type": mime })
   if (mime.startsWith("text/html")) {
     headers.set("content-security-policy", cspForHtml(new TextDecoder().decode(body)))
+    headers.set("cache-control", "no-cache, no-store, must-revalidate")
+  } else {
+    headers.set("cache-control", "public, max-age=31536000, immutable")
   }
   return HttpServerResponse.raw(body, { headers })
 }

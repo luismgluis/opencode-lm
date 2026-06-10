@@ -29,6 +29,14 @@ function getDb() {
       time_updated INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
     )`)
     _db.exec("CREATE UNIQUE INDEX IF NOT EXISTS user_username_idx ON user(username)")
+    // User key-value data store (projects, preferences, settings)
+    _db.exec(`CREATE TABLE IF NOT EXISTS user_data (
+      user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL DEFAULT '{}',
+      time_updated INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+      PRIMARY KEY (user_id, key)
+    )`)
   }
   return _db
 }
@@ -166,4 +174,23 @@ export function getSessionByToken(token: string) {
 
 export function deleteSession(_token: string) {
   // JWT is stateless — no server-side cleanup needed
+}
+
+// ── User data store (key-value, survives browser clears) ──
+
+export function getUserData(userId: string, key: string): string | undefined {
+  const row = getDb().query("SELECT value FROM user_data WHERE user_id = ? AND key = ?").get(userId, key) as { value: string } | undefined
+  return row?.value
+}
+
+export function setUserData(userId: string, key: string, value: string) {
+  getDb().run(
+    `INSERT INTO user_data (user_id, key, value, time_updated) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, time_updated = excluded.time_updated`,
+    userId, key, value, Date.now(),
+  )
+}
+
+export function deleteUserData(userId: string, key: string) {
+  getDb().run("DELETE FROM user_data WHERE user_id = ? AND key = ?", userId, key)
 }

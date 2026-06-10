@@ -11,9 +11,30 @@ import {
   getAllUsers,
   getUserById,
   updatePassword,
+  getUserData,
+  setUserData,
+  deleteUserData,
 } from "./session"
 import { Database } from "@opencode-ai/core/database/database"
 import { UserTable } from "./user.sql"
+
+// ── Slack alert on failed login ──
+const SLACK_WEBHOOK = typeof process !== "undefined" ? process.env.SLACK_NOTIFICATIONS_WEBHOOK : undefined
+
+async function sendSlackAlert(username: string, reason: string) {
+  if (!SLACK_WEBHOOK) return
+  const ip = "unknown"
+  const text = `:warning: *Failed login attempt*\n• *User:* \`${username}\`\n• *Reason:* ${reason}\n• *Time:* ${new Date().toISOString()}\n• *IP:* ${ip}`
+  try {
+    await fetch(SLACK_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
+  } catch {
+    // silently ignore
+  }
+}
 
 // ── JWT Auth Middleware for Hono ──
 function jwtAuth() {
@@ -61,9 +82,15 @@ export function AuthRoutes(): Hono {
     if (!username || !password) return c.json({ error: "Username and password required" }, 400)
 
     const user = getUserByUsername(username)
-    if (!user) return c.json({ error: "Invalid credentials" }, 401)
+    if (!user) {
+      sendSlackAlert(username, "User not found")
+      return c.json({ error: "Invalid credentials" }, 401)
+    }
 
-    if (!verifyPassword(password, user.password_hash)) return c.json({ error: "Invalid credentials" }, 401)
+    if (!verifyPassword(password, user.password_hash)) {
+      sendSlackAlert(username, "Invalid password")
+      return c.json({ error: "Invalid credentials" }, 401)
+    }
 
     const token = createToken({ id: user.id, username: user.username, role: user.role })
     const maxAge = 7 * 24 * 60 * 60
@@ -220,6 +247,36 @@ export function UserManagementRoutes(): Hono {
     const target = getUserById(id)
     if (!target) return c.json({ error: "User not found" }, 404)
     deleteUser(id)
+    return c.json({ ok: true })
+  })
+
+  // ── User data endpoints (survives browser cache clears) ──
+
+  app.get("/data/:key", async (c) => {
+    const err = requireAuth(c)
+    if (err) return err
+    const user = c.get("user") as { id: string }
+    const key = c.req.param("key")
+    const value = getUserData(user.id, key)
+    return c.json({ value: value ? JSON.parse(value) : null })
+  })
+
+  app.put("/data/:key", async (c) => {
+    const err = requireAuth(c)
+    if (err) return err
+    const user = c.get("user") as { id: string }
+    const key = c.req.param("key")
+    const { value } = await c.req.json<{ value: any }>()
+    setUserData(user.id, key, JSON.stringify(value))
+    return c.json({ ok: true })
+  })
+
+  app.delete("/data/:key", async (c) => {
+    const err = requireAuth(c)
+    if (err) return err
+    const user = c.get("user") as { id: string }
+    const key = c.req.param("key")
+    deleteUserData(user.id, key)
     return c.json({ ok: true })
   })
 

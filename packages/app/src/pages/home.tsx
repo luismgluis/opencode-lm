@@ -47,6 +47,39 @@ import { useSettings } from "@/context/settings"
 import { ServerRowMenu } from "@/components/server/server-row-menu"
 import { ServerHealthIndicator } from "@/components/server/server-row"
 import { type ServerHealth } from "@/utils/server-health"
+import { createResource } from "solid-js"
+
+// ── Server-synced project list (survives browser data clears) ──
+function saveProjectsToServer(ctx: ReturnType<typeof useLayout>) {
+  if (typeof fetch === "undefined") return
+  const token = localStorage.getItem("opencode_token")
+  if (!token) return
+  const dirs = ctx.projects.list().map((p) => p.worktree)
+  fetch("/api/users/data/projects", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ value: dirs }),
+  }).catch(() => {})
+}
+
+function useSavedProjects() {
+  const [data] = createResource(async () => {
+    if (typeof fetch === "undefined" || typeof localStorage === "undefined") return []
+    const token = localStorage.getItem("opencode_token")
+    if (!token) return []
+    try {
+      const res = await fetch("/api/users/data/projects", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) return []
+      const json = await res.json()
+      return Array.isArray(json.value) ? json.value : []
+    } catch {
+      return []
+    }
+  })
+  return data
+}
 
 const HOME_SESSION_LIMIT = 64
 const HOME_ROW_LAYOUT =
@@ -261,7 +294,23 @@ function HomeDesign() {
     directories.forEach(ctx.projects.open)
     ctx.projects.touch(directory)
     setSelection({ server: ServerConnection.key(conn), directory })
+    // Sync to server
+    saveProjectsToServer(ctx)
   }
+
+  // ── Server-side project persistence ──
+  const savedProjects = useSavedProjects()
+  createEffect(() => {
+    const dirs = savedProjects()
+    if (!dirs || dirs.length === 0) return
+    const conn = focusedServer()
+    if (!conn) return
+    const ctx = global.createServerCtx(conn)
+    for (const dir of dirs) {
+      if (ctx.projects.list().some((p) => p.worktree === dir)) continue
+      ctx.projects.open(dir)
+    }
+  })
 
   function openNewSession() {
     const conn = focusedServer()
@@ -517,6 +566,22 @@ function HomeProjectColumn(props: {
           <span class={HOME_PROJECT_NAV_LABEL}>{props.language.t("sidebar.help")}</span>
         </button>
       </div>
+      <Show when={typeof window !== "undefined" && localStorage.getItem("opencode_token")}>
+        <div class="mt-auto flex min-w-0 flex-col gap-1 pt-4 border-t border-v2-border-border-base">
+          <button
+            type="button"
+            class={`${HOME_PROJECT_NAV_ROW} text-v2-text-text-faint [&>[data-slot=icon-svg]]:text-v2-icon-icon-muted`}
+            onClick={() => {
+              localStorage.removeItem("opencode_token")
+              localStorage.removeItem("opencode_user")
+              window.location.href = "/auth/logout"
+            }}
+          >
+            <IconV2 name="arrow-left" size="small" />
+            <span class={HOME_PROJECT_NAV_LABEL}>Sign out</span>
+          </button>
+        </div>
+      </Show>
     </aside>
   )
 }

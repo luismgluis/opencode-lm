@@ -91,31 +91,72 @@ function loginPage(): string {
   <form id="loginForm" class="LoginPage__form">
     <div class="AuthPage__field">
       <label for="username" class="AuthPage__label">Username</label>
-      <input type="text" id="username" name="username" class="AuthPage__input" required autocomplete="username">
+      <input type="text" id="username" name="username" class="AuthPage__input" required autocomplete="username" placeholder="Enter your username">
     </div>
-    <div class="AuthPage__field">
+    <div class="AuthPage__field LoginPage__passwordField">
       <label for="password" class="AuthPage__label">Password</label>
-      <input type="password" id="password" name="password" class="AuthPage__input" required autocomplete="current-password">
+      <div class="LoginPage__passwordWrapper">
+        <input type="password" id="password" name="password" class="AuthPage__input LoginPage__passwordInput" required autocomplete="current-password" placeholder="Enter your password">
+        <button type="button" class="LoginPage__toggleBtn" id="togglePassword" tabindex="-1" aria-label="Toggle password visibility">
+          <svg class="LoginPage__eyeIcon LoginPage__eyeIcon--open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <svg class="LoginPage__eyeIcon LoginPage__eyeIcon--closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+            <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+      </div>
     </div>
-    <button type="submit" class="AuthPage__btn AuthPage__btn--primary">Sign in</button>
+    <button type="submit" class="AuthPage__btn AuthPage__btn--primary" id="submitBtn">Sign in</button>
     <div id="error" class="AuthPage__error" style="display:none"></div>
   </form>
   <div id="registerLink" class="AuthPage__footer" style="display:none">
     No account? <a href="/auth/register" class="AuthPage__link">Create one</a>
   </div>
 </div>
+<style>
+  .LoginPage__passwordField { position: relative; }
+  .LoginPage__passwordWrapper { position: relative; display: flex; align-items: center; }
+  .LoginPage__passwordInput { padding-right: 44px !important; }
+  .LoginPage__toggleBtn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; padding: 6px;
+    color: var(--text-muted, #8b949e); display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; transition: color 0.15s, background 0.15s;
+  }
+  .LoginPage__toggleBtn:hover { color: var(--text-primary, #c9d1d9); background: var(--bg-hover, #21262d); }
+  .LoginPage__toggleBtn:focus-visible { outline: 2px solid var(--accent-blue, #58a6ff); outline-offset: 2px; }
+  .LoginPage__eyeIcon { display: block; pointer-events: none; }
+</style>
 <script>
-  const err = document.getElementById(\'error\');
-  document.getElementById(\'loginForm\').addEventListener(\'submit\', async (e) => {
-    e.preventDefault(); err.style.display = \'none\';
-    const r = await fetch(\'/auth/login\', { method:\'POST\', headers:{\'Content-Type\':\'application/json\'}, body:JSON.stringify({username:document.getElementById(\'username\').value, password:document.getElementById(\'password\').value}) });
-    if (!r.ok) { const d = await r.json(); err.textContent = d.error || \'Login failed\'; err.style.display = \'block\'; return; }
+  // Password visibility toggle
+  const pw = document.getElementById('password');
+  const toggle = document.getElementById('togglePassword');
+  const openIcon = toggle.querySelector('.LoginPage__eyeIcon--open');
+  const closedIcon = toggle.querySelector('.LoginPage__eyeIcon--closed');
+  toggle.addEventListener('click', () => {
+    const isPassword = pw.type === 'password';
+    pw.type = isPassword ? 'text' : 'password';
+    openIcon.style.display = isPassword ? 'none' : '';
+    closedIcon.style.display = isPassword ? '' : 'none';
+  });
+  // Submit
+  const err = document.getElementById('error');
+  const submitBtn = document.getElementById('submitBtn');
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault(); err.style.display = 'none';
+    submitBtn.disabled = true; submitBtn.textContent = 'Signing in...';
+    const r = await fetch('/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:document.getElementById('username').value, password:document.getElementById('password').value}) });
+    if (!r.ok) { const d = await r.json(); err.textContent = d.error || 'Login failed'; err.style.display = 'block'; submitBtn.disabled = false; submitBtn.textContent = 'Sign in'; return; }
     const data = await r.json();
     localStorage.setItem('opencode_token', data.token);
     localStorage.setItem('opencode_user', JSON.stringify(data.user));
     window.location.href = '/';
   });
-  fetch(\'/auth/session\').then(r => r.json()).then(d => { if (!d.user) fetch(\'/auth/check-register\').then(r => { if (r.status === 200) document.getElementById(\'registerLink\').style.display = \'block\'; }); });
+  fetch('/auth/session').then(r => r.json()).then(d => { if (!d.user) fetch('/auth/check-register').then(r => { if (r.status === 200) document.getElementById('registerLink').style.display = 'block'; }); });
 </script>`)
 }
 
