@@ -14,9 +14,8 @@ import {
   getUserData,
   setUserData,
   deleteUserData,
+  createUser,
 } from "./session"
-import { Database } from "@opencode-ai/core/database/database"
-import { UserTable } from "./user.sql"
 
 // ── Slack alert on failed login ──
 const SLACK_WEBHOOK = typeof process !== "undefined" ? process.env.SLACK_NOTIFICATIONS_WEBHOOK : undefined
@@ -151,13 +150,8 @@ export function AuthRoutes(): Hono {
     const existing = getUserByUsername(username)
     if (existing) return c.json({ error: "Username already taken" }, 409)
 
-    const id = randomBytes(16).toString("hex")
-    const passwordHash = hashPassword(password)
     const role = existingCount === 0 ? "admin" : "member"
-
-    Database.transaction((tx) => {
-      tx.insert(UserTable).values({ id, username, password_hash: passwordHash, role }).run()
-    })
+    const id = createUser(username, hashPassword(password), role)
 
     const token = createToken({ id, username, role })
     const maxAge = 7 * 24 * 60 * 60
@@ -217,12 +211,8 @@ export function UserManagementRoutes(): Hono {
     if (password.length < 6) return c.json({ error: "Password must be at least 6 characters" }, 400)
     const existing = getUserByUsername(username)
     if (existing) return c.json({ error: "Username already taken" }, 409)
-    const id = randomBytes(16).toString("hex")
-    const passwordHash = hashPassword(password)
     const userRole = role === "admin" ? "admin" : "member"
-    Database.transaction((tx) => {
-      tx.insert(UserTable).values({ id, username, password_hash: passwordHash, role: userRole }).run()
-    })
+    const id = createUser(username, hashPassword(password), userRole)
     return c.json({ id, username, role: userRole }, 201)
   })
 
