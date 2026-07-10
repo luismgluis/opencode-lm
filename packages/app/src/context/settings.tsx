@@ -239,13 +239,6 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setEditToolPartsExpanded(value: boolean) {
           setStore("general", "editToolPartsExpanded", value)
         },
-        showSessionProgressBar: withFallback(
-          () => store.general?.showSessionProgressBar,
-          defaultSettings.general.showSessionProgressBar,
-        ),
-        setShowSessionProgressBar(value: boolean) {
-          setStore("general", "showSessionProgressBar", value)
-        },
         showCustomAgents,
         setShowCustomAgents(value: boolean) {
           setStore("general", "showCustomAgents", value)
