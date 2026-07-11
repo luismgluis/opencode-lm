@@ -30,26 +30,11 @@ const triggerClass =
 // TODO: wire to changelog / seen-state when available
 const showPopover = () => true
 
+// Fork: force-hide the floating opencode.ai link button on mobile (and everywhere).
+// It overlaps content on small screens. Kept as a no-op stub so layout imports
+// remain valid after upstream merges.
 export function HelpButton() {
-  if (import.meta.env.VITE_OPENCODE_CHANNEL !== "dev") return null
-
-  const platform = usePlatform()
-
-  return (
-    <a
-      href="https://opencode.ai"
-      aria-label="Open the OpenCode website"
-      data-component="icon-button-v2"
-      data-size="large"
-      class={`${triggerClass} fixed bottom-5 right-5 z-50 flex items-center justify-center`}
-      onClick={(event) => {
-        event.preventDefault()
-        platform.openLink(event.currentTarget.href)
-      }}
-    >
-      {helpIcon}
-    </a>
-  )
+  return null
 }
 
 // can remove this after the tabs rollout has been out for a while
