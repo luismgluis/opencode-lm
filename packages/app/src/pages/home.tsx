@@ -75,7 +75,8 @@ import {
 } from "@/context/global-sync/home-session-index"
 
 // ── Server-synced project list (survives browser data clears) ──
-function saveProjectsToServer(ctx: ReturnType<typeof useLayout>) {
+type CtxWithProjects = { projects: { list(): { worktree: string }[] } }
+function saveProjectsToServer(ctx: CtxWithProjects) {
   if (typeof fetch === "undefined") return
   const token = localStorage.getItem("opencode_token")
   if (!token) return
@@ -521,7 +522,7 @@ export function NewHome() {
     if (!dirs || dirs.length === 0) return
     const conn = focusedServer()
     if (!conn) return
-    const ctx = global.createServerCtx(conn)
+    const ctx = global.ensureServerCtx(conn)
     for (const dir of dirs) {
       if (ctx.projects.list().some((p) => p.worktree === dir)) continue
       ctx.projects.open(dir)
