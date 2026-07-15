@@ -1,6 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import type { AsyncStorage, SyncStorage } from "@solid-primitives/storage"
 import type { Accessor } from "solid-js"
+import type { DesktopMenuAction } from "../desktop-menu"
 import { ServerConnection } from "./server"
 import type { WslServersPlatform } from "../wsl/types"
 import type { UpdaterPlatform } from "../updater"
@@ -35,6 +36,9 @@ type PlatformBase = {
 
   /** Open a local path in a local app (desktop only) */
   openPath?(path: string, app?: string): Promise<void>
+
+  /** Reveal a local path in the system file manager; false when the path does not exist (desktop only) */
+  revealPath?(path: string): Promise<boolean>
 
   /** Restart the app  */
   restart(): Promise<void>
@@ -93,6 +97,15 @@ type PlatformBase = {
   /** Webview zoom level (desktop only) */
   webviewZoom?: Accessor<number>
 
+  /** Get whether native pinch/Ctrl-scroll zoom gestures are enabled (desktop only) */
+  getPinchZoomEnabled?(): Promise<boolean> | boolean
+
+  /** Allow native pinch/Ctrl-scroll zoom gestures (desktop only) */
+  setPinchZoomEnabled?(enabled: boolean): Promise<void> | void
+
+  /** Run a desktop-only menu action from the app chrome */
+  runDesktopMenuAction?(action: DesktopMenuAction): Promise<void> | void
+
   /** Check if an editor app exists (desktop only) */
   checkAppExists?(appName: string): Promise<boolean>
 
@@ -101,6 +114,12 @@ type PlatformBase = {
 
   /** Logout and clear session */
   logout?(): void | Promise<void>
+
+  /** Export collected diagnostic logs (desktop only) */
+  exportDebugLogs?(): Promise<string>
+
+  /** Record a fatal renderer error in platform logs (desktop only) */
+  recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
 }
 
 export type Platform = PlatformBase &
