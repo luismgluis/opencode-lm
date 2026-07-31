@@ -232,7 +232,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
   gate: false,
   init: () => {
     const platform = usePlatform()
-    const [store, setStore, _, ready] = persisted("settings.v5", createStore<Settings>(defaultSettings))
+    const [store, setStore, settingsInit, ready] = persisted("settings.v5", createStore<Settings>(defaultSettings))
     const [launch, setLaunch, , launchReady] = persisted(
       "app-version.v1",
       createStore<{ version?: string }>({ version: undefined }),
